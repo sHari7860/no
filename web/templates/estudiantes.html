@@ -1,0 +1,452 @@
+{% extends "base.html" %}
+
+{% block title %}Estadísticas de Estudiantes - UNITE{% endblock %}
+
+{% block styles %}
+<style>
+    .stat-card {
+        border-radius: 12px;
+        transition: all 0.3s;
+        border: none;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .stat-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 15px rgba(0,0,0,0.2);
+    }
+    .card-header {
+        border-bottom: 2px solid rgba(0,0,0,.1);
+        border-radius: 12px 12px 0 0 !important;
+    }
+    .chart-container {
+        position: relative;
+        height: 300px;
+        margin: 20px 0;
+    }
+    .info-badge {
+        font-size: 0.8rem;
+        padding: 0.25rem 0.5rem;
+    }
+    .table-hover tbody tr:hover {
+        background-color: rgba(0,0,0,0.02);
+    }
+    .percentage-display {
+        font-size: 1.8rem;
+        font-weight: bold;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="mb-1">Dashboard de Estudiantes</h1>
+        <p class="text-muted mb-0">
+            <i class="bi bi-people-fill"></i> Análisis detallado de la población estudiantil
+        </p>
+    </div>
+    <div>
+        <a href="/" class="btn btn-outline-secondary me-2">
+            <i class="bi bi-arrow-left"></i> Volver al Dashboard
+        </a>
+    </div>
+</div>
+
+<!-- Estadísticas Principales -->
+<div class="row mb-4">
+    <div class="col-xl-3 col-md-6 mb-4">
+        <a href="#estadisticas" class="text-decoration-none">
+            <div class="card stat-card bg-primary text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-title mb-1">TOTAL ESTUDIANTES</h6>
+                            <h2 class="mb-0">{{ total_estudiantes }}</h2>
+                            <small class="opacity-75">Registrados en el sistema</small>
+                        </div>
+                        <div class="display-4">
+                            <i class="bi bi-people"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </a>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card stat-card bg-success text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title mb-1">ESTUDIANTES CONFIRMADOS</h6>
+                        <h2 class="mb-0">{{ estudiantes_confirmados }}</h2>
+                        <small class="opacity-75">
+                            {{ ((estudiantes_confirmados/total_estudiantes)*100)|round(1) if total_estudiantes > 0 else 0 }}% del total
+                        </small>
+                    </div>
+                    <div class="display-4">
+                        <i class="bi bi-check-circle"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card stat-card bg-warning text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title mb-1">POR CONFIRMAR</h6>
+                        <h2 class="mb-0">{{ estudiantes_por_confirmar }}</h2>
+                        <small class="opacity-75">
+                            {{ ((estudiantes_por_confirmar/total_estudiantes)*100)|round(1) if total_estudiantes > 0 else 0 }}% pendientes
+                        </small>
+                    </div>
+                    <div class="display-4">
+                        <i class="bi bi-clock-history"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card stat-card bg-info text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title mb-1">SIN MATRÍCULA</h6>
+                        <h2 class="mb-0">{{ estudiantes_sin_matricula }}</h2>
+                        <small class="opacity-75">
+                            {{ ((estudiantes_sin_matricula/total_estudiantes)*100)|round(1) if total_estudiantes > 0 else 0 }}% sin actividad
+                        </small>
+                    </div>
+                    <div class="display-4">
+                        <i class="bi bi-person-x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Gráficos -->
+<div class="row mb-4">
+    <div class="col-lg-6 mb-4">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">
+                    <i class="bi bi-pie-chart"></i> Distribución por Categoría
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <canvas id="categoriaChart"></canvas>
+                </div>
+                <div class="table-responsive mt-3">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Categoría</th>
+                                <th>Cantidad</th>
+                                <th>Porcentaje</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if estudiantes_categoria %}
+                                {% for cat in estudiantes_categoria %}
+                                <tr>
+                                    <td>
+                                        <span class="badge bg-primary">{{ cat[0] }}</span>
+                                    </td>
+                                    <td>{{ cat[1] }}</td>
+                                    <td width="40%">
+                                        {% set porcentaje = (cat[1]/total_estudiantes*100)|round(1) if total_estudiantes > 0 else 0 %}
+                                        <div class="progress" style="height: 8px;">
+                                            <div class="progress-bar" role="progressbar" 
+                                                 style="width: {{ porcentaje }}%"></div>
+                                        </div>
+                                        <small class="text-muted">{{ porcentaje }}%</small>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="3" class="text-center text-muted">
+                                        No hay datos de categorías
+                                    </td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6 mb-4">
+        <div class="card shadow">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0">
+                    <i class="bi bi-bar-chart"></i> Estudiantes Confirmados vs Por Confirmar
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row mb-4">
+                    <div class="col-md-6 text-center">
+                        <div class="percentage-display text-success">
+                            {{ ((estudiantes_confirmados/total_estudiantes)*100)|round(1) if total_estudiantes > 0 else 0 }}%
+                        </div>
+                        <p class="text-muted">Confirmados</p>
+                        <div class="progress" style="height: 20px;">
+                            <div class="progress-bar bg-success" role="progressbar" 
+                                 style="width: {{ (estudiantes_confirmados/total_estudiantes*100)|round(1) if total_estudiantes > 0 else 0 }}%">
+                                {{ estudiantes_confirmados }}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 text-center">
+                        <div class="percentage-display text-warning">
+                            {{ ((estudiantes_por_confirmar/total_estudiantes)*100)|round(1) if total_estudiantes > 0 else 0 }}%
+                        </div>
+                        <p class="text-muted">Por Confirmar</p>
+                        <div class="progress" style="height: 20px;">
+                            <div class="progress-bar bg-warning" role="progressbar" 
+                                 style="width: {{ (estudiantes_por_confirmar/total_estudiantes*100)|round(1) if total_estudiantes > 0 else 0 }}%">
+                                {{ estudiantes_por_confirmar }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="comparacionChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Estadísticas Adicionales -->
+<div class="row">
+    <div class="col-lg-4 mb-4">
+        <div class="card shadow">
+            <div class="card-header bg-secondary text-white">
+                <h6 class="mb-0">
+                    <i class="bi bi-diagram-3"></i> Estudiantes con Múltiples Programas
+                </h6>
+            </div>
+            <div class="card-body text-center">
+                <h1 class="display-4 text-secondary">{{ estudiantes_multiple_programa }}</h1>
+                <p class="text-muted">
+                    {% set porcentaje_multi = (estudiantes_multiple_programa/total_estudiantes*100)|round(1) if total_estudiantes > 0 else 0 %}
+                    {{ porcentaje_multi }}% del total
+                </p>
+                <div class="progress" style="height: 15px;">
+                    <div class="progress-bar bg-secondary" role="progressbar" 
+                         style="width: {{ porcentaje_multi }}%"></div>
+                </div>
+                <small class="text-muted">Estudian más de un programa simultáneamente</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-8 mb-4">
+        <div class="card shadow">
+            <div class="card-header bg-purple text-white" style="background-color: #6f42c1;">
+                <h6 class="mb-0">
+                    <i class="bi bi-calendar-month"></i> Nuevos Estudiantes (Últimos 6 meses)
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <canvas id="tendenciaChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Resumen -->
+<div class="row">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-clipboard-data"></i> Resumen Ejecutivo
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <ul class="list-group list-group-flush">
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Total Estudiantes Registrados
+                                <span class="badge bg-primary rounded-pill">{{ total_estudiantes }}</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Tasa de Confirmación
+                                <span class="badge bg-success rounded-pill">
+                                    {{ ((estudiantes_confirmados/total_estudiantes)*100)|round(1) if total_estudiantes > 0 else 0 }}%
+                                </span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Pendientes por Confirmar
+                                <span class="badge bg-warning rounded-pill">{{ estudiantes_por_confirmar }}</span>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <ul class="list-group list-group-flush">
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Estudiantes Activos
+                                <span class="badge bg-info rounded-pill">
+                                    {{ total_estudiantes - estudiantes_sin_matricula }}
+                                </span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Estudiantes Inactivos
+                                <span class="badge bg-secondary rounded-pill">
+                                    {{ estudiantes_sin_matricula }}
+                                </span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Estudiantes Múltiples Programas
+                                <span class="badge bg-purple rounded-pill" style="background-color: #6f42c1;">
+                                    {{ estudiantes_multiple_programa }}
+                                </span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Gráfico de Categorías
+const categoriaCtx = document.getElementById('categoriaChart').getContext('2d');
+new Chart(categoriaCtx, {
+    type: 'doughnut',
+    data: {
+        labels: {{ categorias_labels|tojson|safe }},
+        datasets: [{
+            data: {{ categorias_data|tojson|safe }},
+            backgroundColor: [
+                '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', 
+                '#9966FF', '#FF9F40', '#8AC926', '#1982C4'
+            ],
+            borderWidth: 1
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: {
+                position: 'bottom',
+            },
+            title: {
+                display: true,
+                text: 'Distribución por Categoría'
+            }
+        }
+    }
+});
+
+// Gráfico de Comparación
+const comparacionCtx = document.getElementById('comparacionChart').getContext('2d');
+new Chart(comparacionCtx, {
+    type: 'bar',
+    data: {
+        labels: ['Confirmados', 'Por Confirmar', 'Sin Matrícula'],
+        datasets: [{
+            label: 'Cantidad de Estudiantes',
+            data: [
+                {{ estudiantes_confirmados }},
+                {{ estudiantes_por_confirmar }},
+                {{ estudiantes_sin_matricula }}
+            ],
+            backgroundColor: [
+                'rgba(40, 167, 69, 0.7)',
+                'rgba(255, 193, 7, 0.7)',
+                'rgba(108, 117, 125, 0.7)'
+            ],
+            borderColor: [
+                'rgb(40, 167, 69)',
+                'rgb(255, 193, 7)',
+                'rgb(108, 117, 125)'
+            ],
+            borderWidth: 1
+        }]
+    },
+    options: {
+        responsive: true,
+        scales: {
+            y: {
+                beginAtZero: true,
+                title: {
+                    display: true,
+                    text: 'Número de Estudiantes'
+                }
+            }
+        },
+        plugins: {
+            legend: {
+                display: false
+            },
+            title: {
+                display: true,
+                text: 'Comparación de Estados'
+            }
+        }
+    }
+});
+
+// Gráfico de Tendencia
+const tendenciaCtx = document.getElementById('tendenciaChart').getContext('2d');
+new Chart(tendenciaCtx, {
+    type: 'line',
+    data: {
+        labels: {{ meses_labels|tojson|safe }},
+        datasets: [{
+            label: 'Nuevos Estudiantes',
+            data: {{ meses_data|tojson|safe }},
+            backgroundColor: 'rgba(111, 66, 193, 0.2)',
+            borderColor: 'rgb(111, 66, 193)',
+            borderWidth: 2,
+            tension: 0.3,
+            fill: true
+        }]
+    },
+    options: {
+        responsive: true,
+        scales: {
+            y: {
+                beginAtZero: true,
+                title: {
+                    display: true,
+                    text: 'Nuevos Estudiantes'
+                }
+            },
+            x: {
+                title: {
+                    display: true,
+                    text: 'Mes'
+                }
+            }
+        },
+        plugins: {
+            title: {
+                display: true,
+                text: 'Tendencia de Nuevos Estudiantes'
+            }
+        }
+    }
+});
+</script>
+{% endblock %}

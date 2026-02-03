@@ -4,219 +4,351 @@
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h1 class="mb-0">Dashboard de Matrículas</h1>
-    <a href="/upload" class="btn btn-primary">
-        <i class="bi bi-upload"></i> Importar Excel
-    </a>
+  <h1 class="mb-0">Dashboard de Matrículas</h1>
+  <a href="/upload" class="btn btn-primary">
+    <i class="bi bi-upload"></i> Importar Excel
+  </a>
 </div>
 
 <!-- Estadísticas -->
 <div class="row mb-4">
-    <div class="col-xl-3 col-md-6 mb-4">
-        <div class="card stat-card border-left-primary shadow h-100 py-2">
-            <div class="card-body">
-                <div class="row no-gutters align-items-center">
-                    <div class="col mr-2">
-                        <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
-                            Total Estudiantes</div>
-                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.estudiantes|default(0) }}</div>
-                    </div>
-                    <div class="col-auto">
-                        <i class="bi bi-people-fill fa-2x text-primary"></i>
-                    </div>
-                </div>
+  <div class="col-xl-3 col-md-6 mb-4">
+    <a href="/estudiantes" class="text-decoration-none">
+      <div class="card stat-card border-left-primary shadow h-100 py-2 hover-card">
+        <div class="card-body">
+          <div class="row no-gutters align-items-center">
+            <div class="col mr-2">
+              <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                Total Estudiantes</div>
+              <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.estudiantes|default(0) }}</div>
             </div>
+            <div class="col-auto">
+              <i class="bi bi-people-fill fa-2x text-primary"></i>
+            </div>
+          </div>
+          <div class="text-end mt-2">
+            <small class="text-primary">
+              <i class="bi bi-arrow-right"></i> Ver detalles
+            </small>
+          </div>
         </div>
-    </div>
+      </div>
+    </a>
+  </div>
 
-    <div class="col-xl-3 col-md-6 mb-4">
-        <div class="card stat-card border-left-success shadow h-100 py-2">
-            <div class="card-body">
-                <div class="row no-gutters align-items-center">
-                    <div class="col mr-2">
-                        <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
-                            Total Programas</div>
-                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.programas|default(0) }}</div>
-                    </div>
-                    <div class="col-auto">
-                        <i class="bi bi-book-half fa-2x text-success"></i>
-                    </div>
-                </div>
-            </div>
+  <div class="col-xl-3 col-md-6 mb-4">
+    <div class="card stat-card border-left-success shadow h-100 py-2">
+      <div class="card-body">
+        <div class="row no-gutters align-items-center">
+          <div class="col mr-2">
+            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+              Total Programas</div>
+            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.programas|default(0) }}</div>
+          </div>
+          <div class="col-auto">
+            <i class="bi bi-book-half fa-2x text-success"></i>
+          </div>
         </div>
+      </div>
     </div>
+  </div>
 
-    <div class="col-xl-3 col-md-6 mb-4">
-        <div class="card stat-card border-left-warning shadow h-100 py-2">
-            <div class="card-body">
-                <div class="row no-gutters align-items-center">
-                    <div class="col mr-2">
-                        <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
-                            Total Matrículas</div>
-                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.matriculas|default(0) }}</div>
-                    </div>
-                    <div class="col-auto">
-                        <i class="bi bi-clipboard-check fa-2x text-warning"></i>
-                    </div>
-                </div>
-            </div>
+  <div class="col-xl-3 col-md-6 mb-4">
+    <div class="card stat-card border-left-warning shadow h-100 py-2">
+      <div class="card-body">
+        <div class="row no-gutters align-items-center">
+          <div class="col mr-2">
+            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+              Total Matrículas</div>
+            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.matriculas|default(0) }}</div>
+          </div>
+          <div class="col-auto">
+            <i class="bi bi-clipboard-check fa-2x text-warning"></i>
+          </div>
         </div>
+      </div>
     </div>
+  </div>
 
-    <div class="col-xl-3 col-md-6 mb-4">
-        <div class="card stat-card border-left-info shadow h-100 py-2">
-            <div class="card-body">
-                <div class="row no-gutters align-items-center">
-                    <div class="col mr-2">
-                        <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
-                            Períodos Activos</div>
-                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.periodos|default(0) }}</div>
-                    </div>
-                    <div class="col-auto">
-                        <i class="bi bi-calendar-event fa-2x text-info"></i>
-                    </div>
-                </div>
-            </div>
+  <div class="col-xl-3 col-md-6 mb-4">
+    <div class="card stat-card border-left-info shadow h-100 py-2">
+      <div class="card-body">
+        <div class="row no-gutters align-items-center">
+          <div class="col mr-2">
+            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+              Períodos Activos</div>
+            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.periodos|default(0) }}</div>
+          </div>
+          <div class="col-auto">
+            <i class="bi bi-calendar-event fa-2x text-info"></i>
+          </div>
         </div>
+      </div>
     </div>
+  </div>
 </div>
 
+<!-- Programas más Solicitados -->
 <div class="row">
-    <!-- Últimas Matrículas -->
-    <div class="col-lg-6 mb-4">
-        <div class="card shadow">
-            <div class="card-header py-3">
-                <h6 class="m-0 font-weight-bold text-primary">Últimas Matrículas</h6>
-            </div>
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table table-hover">
-                        <thead>
-                            <tr>
-                                <th>Estudiante</th>
-                                <th>Programa</th>
-                                <th>Estado</th>
-                                <th>Fecha</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% if ultimas %}
-                                {% for mat in ultimas %}
-                                <tr>
-                                    <td>{{ mat[0][:20] }}{% if mat[0]|length > 20 %}...{% endif %}</td>
-                                    <td>{{ mat[1][:20] }}{% if mat[1]|length > 20 %}...{% endif %}</td>
-                                    <td>
-                                        <span class="badge bg-{{ 'success' if mat[2]=='Confirmado' else 'warning' }}">
-                                            {{ mat[2] }}
-                                        </span>
-                                    </td>
-                                    <td>{{ mat[3] }}</td>
-                                </tr>
-                                {% endfor %}
-                            {% else %}
-                                <tr>
-                                    <td colspan="4" class="text-center text-muted">
-                                        No hay matrículas registradas
-                                    </td>
-                                </tr>
-                            {% endif %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+  <div class="col-12">
+    <div class="card shadow mb-4">
+      <div class="card-header py-3 d-flex justify-content-between align-items-center">
+        <h6 class="m-0 font-weight-bold text-primary">Programas con más Matrículas</h6>
+        <div>
+          <a href="/reports" class="btn btn-sm btn-primary me-2">
+            <i class="bi bi-graph-up"></i> Ver todos los Reportes
+          </a>
+          <button class="btn btn-sm btn-outline-secondary" id="toggleView">
+            <i class="bi bi-bar-chart"></i> Cambiar a Gráfico
+          </button>
         </div>
-    </div>
+      </div>
+      <div class="card-body">
+        <div class="table-responsive" id="tableView">
+          <table class="table table-bordered table-hover">
+            <thead class="table-light">
+              <tr>
+                <th>#</th>
+                <th>Programa</th>
+                <th>Estudiantes Matriculados</th>
+                <th>Porcentaje</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% if por_programa %}
+              {% for programa in por_programa %}
+              <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ programa[0] }}</td>
+                <td>
+                  <span class="badge bg-primary rounded-pill">{{ programa[1] }}</span>
+                </td>
+                <td width="40%">
+                  {% set porcentaje = (programa[1]/stats.matriculas*100)|round(1) if stats.matriculas > 0 else 0 %}
+                  <div class="progress" style="height: 20px;">
+                    <div class="progress-bar progress-bar-striped" role="progressbar" style="width: {{ porcentaje }}%"
+                      aria-valuenow="{{ porcentaje }}" aria-valuemin="0" aria-valuemax="100">
+                      {{ porcentaje }}%
+                    </div>
+                  </div>
+                </td>
+                </td>
+              </tr>
+              {% endfor %}
+              {% else %}
+              <tr>
+                <td colspan="5" class="text-center text-muted">
+                  <i class="bi bi-exclamation-triangle"></i>
+                  No hay datos de programas.
+                  <a href="/upload" class="text-primary">Importa un archivo Excel</a>
+                </td>
+              </tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
 
-    <!-- Programas Populares -->
-    <div class="col-lg-6 mb-4">
-        <div class="card shadow">
-            <div class="card-header py-3 d-flex justify-content-between align-items-center">
-                <h6 class="m-0 font-weight-bold text-primary">Programas más Solicitados</h6>
-                <a href="/reports" class="btn btn-sm btn-primary">Ver Reportes</a>
-            </div>
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table">
-                        <thead>
-                            <tr>
-                                <th>Programa</th>
-                                <th>Matriculados</th>
-                                <th>%</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% if por_programa %}
-                                {% for programa in por_programa %}
-                                <tr>
-                                    <td>{{ programa[0] }}</td>
-                                    <td>{{ programa[1] }}</td>
-                                    <td width="40%">
-                                        <div class="progress">
-                                            <div class="progress-bar" role="progressbar" 
-                                                 style="width: {{ (programa[1]/stats.matriculas*100)|round(1) if stats.matriculas > 0 else 0 }}%">
-                                                {{ (programa[1]/stats.matriculas*100)|round(1) if stats.matriculas > 0 else 0 }}%
-                                            </div>
-                                        </div>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            {% else %}
-                                <tr>
-                                    <td colspan="3" class="text-center text-muted">
-                                        No hay datos de programas
-                                    </td>
-                                </tr>
-                            {% endif %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+        <!-- Gráfico (es oculto por defecto) -->
+        <div class="chart-container" id="chartView" style="display: none;">
+          <canvas id="programasChart" height="300"></canvas>
         </div>
+      </div>
     </div>
+  </div>
 </div>
 
-<!-- Archivos Recientes -->
+<!-- Distribución por estado -->
 <div class="row">
-    <div class="col-12">
-        <div class="card shadow mb-4">
-            <div class="card-header py-3">
-                <h6 class="m-0 font-weight-bold text-primary">Archivos Importados Recientemente</h6>
-            </div>
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table table-bordered">
-                        <thead>
-                            <tr>
-                                <th>Archivo</th>
-                                <th>Última Carga</th>
-                                <th>Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% if archivos %}
-                                {% for archivo in archivos %}
-                                <tr>
-                                    <td>{{ archivo[0] }}</td>
-                                    <td>{{ archivo[1] }}</td>
-                                    <td>
-                                        <a href="#" class="btn btn-sm btn-outline-primary">
-                                            <i class="bi bi-eye"></i> Ver
-                                        </a>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            {% else %}
-                                <tr>
-                                    <td colspan="3" class="text-center text-muted">
-                                        No se han importado archivos
-                                    </td>
-                                </tr>
-                            {% endif %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+  <div class="col-lg-6 mb-4">
+    <div class="card shadow">
+      <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">Distribución por Estado</h6>
+      </div>
+      <div class="card-body">
+        <div class="table-responsive">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Estado</th>
+                <th>Cantidad</th>
+                <th>Porcentaje</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% if por_estado %}
+              {% set total_estados = por_estado|sum(attribute=1) %}
+              {% for estado in por_estado %}
+              <tr>
+                <td>
+                  <span
+                    class="badge bg-{{ 'success' if estado[0]=='Confirmado' else 'warning' if estado[0]=='Por confirmar' else 'secondary' }}">
+                    {{ estado[0] or 'Sin definir' }}
+                  </span>
+                </td>
+                <td><strong>{{ estado[1] }}</strong></td>
+                <td width="40%">
+                  {% set porcentaje_estado = (estado[1]/total_estados*100)|round(1) if total_estados > 0 else 0 %}
+                  <div class="progress">
+                    <div
+                      class="progress-bar bg-{{ 'success' if estado[0]=='Confirmado' else 'warning' if estado[0]=='Por confirmar' else 'secondary' }}"
+                      role="progressbar" style="width: {{ porcentaje_estado }}%">
+                      {{ porcentaje_estado }}%
+                    </div>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+              {% else %}
+              <tr>
+                <td colspan="3" class="text-center text-muted">
+                  No hay datos de estados
+                </td>
+              </tr>
+              {% endif %}
+            </tbody>
+          </table>
         </div>
+      </div>
     </div>
+  </div>
+
+  <!-- Archivos recientes -->
+  <div class="col-lg-6 mb-4">
+    <div class="card shadow">
+      <div class="card-header py-3 d-flex justify-content-between align-items-center">
+        <h6 class="m-0 font-weight-bold text-primary">Archivos Importados</h6>
+        <span class="badge bg-info">{{ archivos|length }}</span>
+      </div>
+      <div class="card-body">
+        <div class="list-group">
+          {% if archivos %}
+          {% for archivo in archivos %}
+          <div class="list-group-item list-group-item-action">
+            <div class="d-flex w-100 justify-content-between">
+              <h6 class="mb-1">
+                <i class="bi bi-file-excel text-success"></i>
+                {{ archivo[0] }}
+              </h6>
+              <small>{{ archivo[1].strftime('%d/%m/%Y %H:%M') }}</small>
+            </div>
+            <p class="mb-1">
+              <small class="text-muted">Última importación</small>
+            </p>
+          </div>
+          {% endfor %}
+          {% else %}
+          <div class="text-center py-4">
+            <i class="bi bi-folder-x display-4 text-muted mb-3"></i>
+            <p class="text-muted">No se han importado archivos</p>
+            <a href="/upload" class="btn btn-sm btn-outline-primary">
+              <i class="bi bi-upload"></i> Importar primer archivo
+            </a>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
+
+<!-- Resumen de períodos -->
+<div class="row">
+  <div class="col-12">
+    <div class="card shadow">
+      <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">Períodos Académicos</h6>
+      </div>
+      <div class="card-body">
+        {% if por_periodo %}
+        <div class="row">
+          {% for periodo in por_periodo %}
+          <div class="col-md-4 mb-3">
+            <div class="card border-{{ 'primary' if periodo[0]=='2026-1' else 'secondary' }}">
+              <div class="card-body text-center">
+                <h3 class="card-title">{{ periodo[0] }}</h3>
+                <p class="card-text">
+                  <span class="display-6">{{ periodo[1] }}</span><br>
+                  <small class="text-muted">matrículas</small>
+                </p>
+                {% if periodo[0]=='2026-1' %}
+                <span class="badge bg-primary">Activo</span>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-center text-muted">
+          No hay datos de períodos disponibles
+        </p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  // Toggle entre tabla y gráfico
+  document.getElementById('toggleView').addEventListener('click', function () {
+    const tableView = document.getElementById('tableView');
+    const chartView = document.getElementById('chartView');
+    const toggleBtn = document.getElementById('toggleView');
+
+    if (tableView.style.display !== 'none') {
+      // Cambiar a gráfico
+      tableView.style.display = 'none';
+      chartView.style.display = 'block';
+      toggleBtn.innerHTML = '<i class="bi bi-table"></i> Cambiar a Tabla';
+
+      // Crear gráfico si no existe
+      if (!window.programasChart) {
+        const ctx = document.getElementById('programasChart').getContext('2d');
+        window.programasChart = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: {{ por_programa | map(attribute=0) | list | tojson | safe }},
+            datasets: [{
+              label: 'Matriculados',
+              data: {{ por_programa | map(attribute=1) | list | tojson | safe }},
+              backgroundColor: 'rgba(54, 162, 235, 0.7)',
+              borderColor: 'rgba(54, 162, 235, 1)',
+              borderWidth: 1
+            }]
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: {
+                display: true
+              },
+              title: {
+                display: true,
+                text: 'Programas más Solicitados'
+              }
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                title: {
+                  display: true,
+                  text: 'Número de Matrículas'
+                }
+              }
+            }
+          }
+        });
+      }
+    } else {
+      // Cambiar a tabla
+      tableView.style.display = 'block';
+      chartView.style.display = 'none';
+      toggleBtn.innerHTML = '<i class="bi bi-bar-chart"></i> Cambiar a Gráfico';
+    }
+  });
+</script>
 {% endblock %}
