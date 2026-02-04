@@ -1,2 +1,12 @@
-git rm -r --cached "**/*.exe"
-git rm -r --cached "**/*.msi"
+# Ignorar todos los Excel
+*.xlsx
+*.xls
+
+# PERO permitir los Excel dentro de web/upload
+!web/uploads/*.xlsx
+!web/uploads/*.xls
+
+# Otros
+venv/
+__pycache__/
+*.pyc
