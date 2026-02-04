@@ -41,4 +41,4 @@ with engine.connect() as conn:
     if resultado[0] > 0 and resultado[1] == resultado[0]:
         print("\n ¡TODAS las matrículas tienen relaciones correctas!")
     else:
-        print("\n⚠️  Algunas matrículas pueden no tener relaciones completas")
+        print("\n Algunas matrículas pueden no tener relaciones completas")

@@ -2,7 +2,10 @@ from flask import Flask, render_template, request, redirect, url_for, flash, jso
 import os
 from utils.file_processor import procesar_excel_completo
 from flask import Flask, render_template, url_for
-
+from datetime import datetime
+from flask import render_template, request
+from database.connection import SessionLocal
+from database.models import Matricula
 app = Flask(__name__, 
             static_folder='WEB/static',  # Ruta a la carpeta static
             template_folder='WEB/templates')
@@ -34,12 +37,30 @@ def index():
             
             # Matrículas por programa
             por_programa = conn.execute(text("""
-                SELECT p.programa, COUNT(*) as cantidad
-                FROM matriculas m
-                JOIN programas p ON m.programa_id = p.id
-                GROUP BY p.programa
-                ORDER BY cantidad DESC LIMIT 10
-            """)).fetchall()
+    WITH programas_normalizados AS (
+        SELECT 
+            p.id,
+            p.programa AS nombre_original,
+            UPPER(TRANSLATE(p.programa, 
+                'ÁÉÍÓÚÀÈÌÒÙÄËÏÖÜÑáéíóúàèìòùäëïöüñ', 
+                'AEIOUAEIOUAEIOUNaeiouaeiouaeioun'
+            )) AS nombre_normalizado
+        FROM programas p
+    )
+    SELECT 
+        pn.nombre_original as programa,
+        COUNT(*) as cantidad
+    FROM matriculas m
+    JOIN programas_normalizados pn ON m.programa_id = pn.id
+    WHERE pn.nombre_normalizado NOT LIKE '%ESPECIALIZACION%'
+        AND pn.nombre_normalizado NOT LIKE '%MAESTRIA%'
+        AND pn.nombre_normalizado NOT LIKE '%DOCTORADO%'
+        AND pn.nombre_normalizado NOT LIKE '%EXTENSION%'
+        AND pn.nombre_normalizado NOT LIKE '%ADMINISTRATIVO%'
+    GROUP BY pn.nombre_normalizado, pn.nombre_original
+    ORDER BY cantidad DESC 
+    LIMIT 10
+""")).fetchall()
             
             # Distribución por estado
             por_estado = conn.execute(text("""
@@ -61,12 +82,18 @@ def index():
             
             # Últimos archivos cargados
             archivos = conn.execute(text("""
-                SELECT DISTINCT archivo_origen, MAX(fecha_carga) as ultima_carga
-                FROM matriculas 
-                WHERE archivo_origen IS NOT NULL
-                GROUP BY archivo_origen
-                ORDER BY ultima_carga DESC LIMIT 5
-            """)).fetchall()
+    SELECT archivo_origen, MAX(fecha_carga) as ultima_carga
+    FROM matriculas 
+    WHERE archivo_origen IS NOT NULL
+    GROUP BY archivo_origen
+    HAVING MAX(fecha_carga) = (
+        SELECT MAX(fecha_carga) 
+        FROM matriculas 
+        WHERE archivo_origen IS NOT NULL
+    )
+    ORDER BY ultima_carga DESC 
+    LIMIT 1
+""")).fetchall()
             
         return render_template('index.html', 
                              stats=stats, 
@@ -87,11 +114,10 @@ def index():
 
 @app.route('/estudiantes')
 def estudiantes_dashboard():
-    """Dashboard detallado de estudiantes"""
     try:
         from database.connection import engine
         from sqlalchemy import text
-        
+
         with engine.connect() as conn:
             # 1. Total estudiantes
             total_estudiantes = conn.execute(
@@ -100,19 +126,17 @@ def estudiantes_dashboard():
             
             # 2. Estudiantes confirmados (con al menos una matrícula confirmada)
             estudiantes_confirmados = conn.execute(text("""
-                SELECT COUNT(DISTINCT e.id)
-                FROM estudiantes_base e
-                JOIN matriculas m ON e.id = m.estudiante_id
-                WHERE m.estado = 'Confirmado'
-            """)).scalar() or 0
+    SELECT COUNT(DISTINCT m.estudiante_id)
+    FROM matriculas m
+    WHERE m.estado = 'Confirmado'
+""")).scalar() or 0
             
             # 3. Estudiantes por confirmar
             estudiantes_por_confirmar = conn.execute(text("""
-                SELECT COUNT(DISTINCT e.id)
-                FROM estudiantes_base e
-                JOIN matriculas m ON e.id = m.estudiante_id
-                WHERE m.estado = 'Por confirmar'
-            """)).scalar() or 0
+    SELECT COUNT(DISTINCT m.estudiante_id)
+    FROM matriculas m
+    WHERE m.estado = 'Por confirmar'
+""")).scalar() or 0
             
             # 4. Estudiantes nuevos vs antiguos (por categoría)
             estudiantes_categoria = conn.execute(text("""
@@ -125,14 +149,31 @@ def estudiantes_dashboard():
             
             # 5. Distribución por programa (top 10)
             estudiantes_por_programa = conn.execute(text("""
-                SELECT p.programa, COUNT(DISTINCT e.id) as cantidad
-                FROM estudiantes_base e
-                JOIN matriculas m ON e.id = m.estudiante_id
-                JOIN programas p ON m.programa_id = p.id
-                GROUP BY p.programa
-                ORDER BY cantidad DESC
-                LIMIT 10
-            """)).fetchall()
+    WITH programas_normalizados AS (
+        SELECT 
+            p.id,
+            p.programa AS nombre_original,
+            UPPER(TRANSLATE(p.programa, 
+                'ÁÉÍÓÚÀÈÌÒÙÄËÏÖÜÑáéíóúàèìòùäëïöüñ', 
+                'AEIOUAEIOUAEIOUNaeiouaeiouaeioun'
+            )) AS nombre_normalizado
+        FROM programas p
+    )
+    SELECT 
+        pn.nombre_original as programa,
+        COUNT(DISTINCT e.id) as cantidad
+    FROM estudiantes_base e
+    JOIN matriculas m ON e.id = m.estudiante_id
+    JOIN programas_normalizados pn ON m.programa_id = pn.id
+    WHERE pn.nombre_normalizado NOT LIKE '%ESPECIALIZACION%'
+        AND pn.nombre_normalizado NOT LIKE '%MAESTRIA%'
+        AND pn.nombre_normalizado NOT LIKE '%DOCTORADO%'
+        AND pn.nombre_normalizado NOT LIKE '%EXTENSION%'
+        AND pn.nombre_normalizado NOT LIKE '%ADMINISTRATIVO%'
+    GROUP BY pn.nombre_normalizado, pn.nombre_original
+    ORDER BY cantidad DESC
+    LIMIT 10
+""")).fetchall()
             
             # 6. Estudiantes sin matrícula
             estudiantes_sin_matricula = conn.execute(text("""
@@ -235,12 +276,32 @@ def reports():
                 ORDER BY cantidad DESC
             """)).fetchall()
             
-            # Reporte 3: Top programas
+            # Reporte 3: Top programas - CONSULTA CORREGIDA Y NORMALIZADA
             top_programas = conn.execute(text("""
-                SELECT p.programa, COUNT(*) as matriculados
+                WITH programas_normalizados AS (
+                    SELECT 
+                        p.id,
+                        p.programa AS nombre_original,
+                        UPPER(TRANSLATE(p.programa, 
+                            'ÁÉÍÓÚÀÈÌÒÙÄËÏÖÜÑáéíóúàèìòùäëïöüñ', 
+                            'AEIOUAEIOUAEIOUNaeiouaeiouaeioun'
+                        )) AS nombre_normalizado
+                    FROM programas p
+                )
+                SELECT 
+                    pn.nombre_original as programa,
+                    COUNT(DISTINCT m.estudiante_id) as matriculados
                 FROM matriculas m
-                JOIN programas p ON m.programa_id = p.id
-                GROUP BY p.programa
+                JOIN programas_normalizados pn ON m.programa_id = pn.id
+                WHERE pn.nombre_normalizado NOT LIKE '%ESPECIALIZACION%'
+                    AND pn.nombre_normalizado NOT LIKE '%MAESTRIA%'
+                    AND pn.nombre_normalizado NOT LIKE '%DOCTORADO%'
+                    AND pn.nombre_normalizado NOT LIKE '%EXTENSION%'
+                    AND pn.nombre_normalizado NOT LIKE '%ADMINISTRATIVO%'
+                    AND pn.nombre_normalizado NOT LIKE '%ESP.%'
+                    AND pn.nombre_normalizado NOT LIKE '%MG.%'
+                    AND pn.nombre_normalizado NOT LIKE '%DOC.%'
+                GROUP BY pn.nombre_normalizado, pn.nombre_original
                 ORDER BY matriculados DESC
                 LIMIT 15
             """)).fetchall()
@@ -350,6 +411,293 @@ def api_estudiantes_graficos():
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    
+@app.route('/programas')
+def programas_dashboard():
+    """Dashboard detallado de programas con paginación"""
+    try:
+        from database.connection import engine
+        from sqlalchemy import text
+        
+        # Obtener número de página (default: 1)
+        pagina = request.args.get('pagina', 1, type=int)
+        programas_por_pagina = 10
+        offset = (pagina - 1) * programas_por_pagina
+        
+        with engine.connect() as conn:
+            # ============================================
+            # 1. DATOS PARA EL GRÁFICO (TOP 15 para buena visualización)
+            # ============================================
+            programas_grafico = conn.execute(text("""
+                SELECT 
+                    p.programa,
+                    COUNT(DISTINCT m.estudiante_id) as total_estudiantes
+                FROM matriculas m
+                JOIN programas p ON m.programa_id = p.id
+                WHERE UPPER(p.programa) NOT LIKE '%ESPECIALIZACION%'
+                    AND UPPER(p.programa) NOT LIKE '%MAESTRIA%'
+                    AND UPPER(p.programa) NOT LIKE '%DOCTORADO%'
+                    AND UPPER(p.programa) NOT LIKE '%EXTENSION%'
+                    AND UPPER(p.programa) NOT LIKE '%ADMINISTRATIVO%'
+                GROUP BY p.programa
+                ORDER BY total_estudiantes DESC
+                LIMIT 15
+            """)).fetchall()
+            
+            # ============================================
+            # 2. DATOS PARA LA TABLA PAGINADA
+            # ============================================
+            programas_tabla = conn.execute(text("""
+                SELECT 
+                    p.programa,
+                    COUNT(DISTINCT m.estudiante_id) as total_estudiantes,
+                    COUNT(m.id) as total_matriculas,
+                    SUM(CASE WHEN m.estado = 'Confirmado' THEN 1 ELSE 0 END) as confirmados,
+                    SUM(CASE WHEN m.estado = 'Por confirmar' THEN 1 ELSE 0 END) as por_confirmar
+                FROM matriculas m
+                JOIN programas p ON m.programa_id = p.id
+                WHERE UPPER(p.programa) NOT LIKE '%ESPECIALIZACION%'
+                    AND UPPER(p.programa) NOT LIKE '%MAESTRIA%'
+                    AND UPPER(p.programa) NOT LIKE '%DOCTORADO%'
+                    AND UPPER(p.programa) NOT LIKE '%EXTENSION%'
+                    AND UPPER(p.programa) NOT LIKE '%ADMINISTRATIVO%'
+                GROUP BY p.programa
+                ORDER BY total_estudiantes DESC
+                LIMIT :limit OFFSET :offset
+            """), {
+                "limit": programas_por_pagina,
+                "offset": offset
+            }).fetchall()
+            
+            # ============================================
+            # 3. CONTEO TOTAL para paginación
+            # ============================================
+            total_programas = conn.execute(text("""
+                SELECT COUNT(DISTINCT p.programa)
+                FROM programas p
+                JOIN matriculas m ON p.id = m.programa_id
+                WHERE UPPER(p.programa) NOT LIKE '%ESPECIALIZACION%'
+                    AND UPPER(p.programa) NOT LIKE '%MAESTRIA%'
+                    AND UPPER(p.programa) NOT LIKE '%DOCTORADO%'
+                    AND UPPER(p.programa) NOT LIKE '%EXTENSION%'
+                    AND UPPER(p.programa) NOT LIKE '%ADMINISTRATIVO%'
+            """)).scalar() or 0
+            
+            # ============================================
+            # 4. ESTADÍSTICAS GENERALES
+            # ============================================
+            total_estudiantes = conn.execute(text("""
+                SELECT COUNT(DISTINCT estudiante_id) FROM matriculas
+            """)).scalar() or 0
+            
+            total_matriculas = conn.execute(text("""
+                SELECT COUNT(*) FROM matriculas
+            """)).scalar() or 0
+            
+            programas_activos = conn.execute(text("""
+                SELECT COUNT(DISTINCT programa_id) FROM matriculas
+            """)).scalar() or 0
+        
+        # ============================================
+        # 5. CÁLCULOS PARA PAGINACIÓN
+        # ============================================
+        total_paginas = (total_programas + programas_por_pagina - 1) // programas_por_pagina
+        
+        # Preparar datos para gráfico
+        programas_labels = [p[0] for p in programas_grafico]
+        programas_estudiantes = [p[1] for p in programas_grafico]
+        
+        # Preparar datos para tabla
+        tabla_programas = []
+        for programa in programas_tabla:
+            porcentaje_confirmados = (programa[3] / programa[2] * 100) if programa[2] > 0 else 0
+            tabla_programas.append({
+                'nombre': programa[0],
+                'estudiantes': programa[1],
+                'matriculas': programa[2],
+                'confirmados': programa[3],
+                'por_confirmar': programa[4],
+                'porcentaje_confirmados': round(porcentaje_confirmados, 1)
+            })
+        
+        return render_template('programas.html',
+                             # Para gráfico
+                             programas_labels=programas_labels,
+                             programas_estudiantes=programas_estudiantes,
+                             
+                             # Para tabla
+                             tabla_programas=tabla_programas,
+                             
+                             # Para estadísticas
+                             total_programas=total_programas,
+                             total_estudiantes=total_estudiantes,
+                             total_matriculas=total_matriculas,
+                             programas_activos=programas_activos,
+                             
+                             # Para paginación
+                             pagina_actual=pagina,
+                             total_paginas=total_paginas,
+                             programas_por_pagina=programas_por_pagina)
+        
+    except Exception as e:
+        print(f"Error en dashboard programas: {e}")
+        flash(f"Error cargando datos de programas: {str(e)}", "error")
+        return render_template('programas.html',
+                             programas_labels=[],
+                             programas_estudiantes=[],
+                             tabla_programas=[],
+                             total_programas=0,
+                             total_estudiantes=0,
+                             total_matriculas=0,
+                             programas_activos=0,
+                             pagina_actual=1,
+                             total_paginas=1,
+                             programas_por_pagina=10)
+
+@app.route('/programas')
+def programa_detalle():
+    """Dashboard detallado de programas con paginación"""
+    try:
+        from database.connection import engine
+        from sqlalchemy import text
+        
+        # Obtener número de página (default: 1)
+        pagina = request.args.get('pagina', 1, type=int)
+        programas_por_pagina = 10
+        offset = (pagina - 1) * programas_por_pagina
+        
+        with engine.connect() as conn:
+            # ============================================
+            # 1. DATOS PARA EL GRÁFICO (TOP 15 para buena visualización)
+            # ============================================
+            programas_grafico = conn.execute(text("""
+                SELECT 
+                    p.programa,
+                    COUNT(DISTINCT m.estudiante_id) as total_estudiantes
+                FROM matriculas m
+                JOIN programas p ON m.programa_id = p.id
+                WHERE UPPER(p.programa) NOT LIKE '%ESPECIALIZACION%'
+                    AND UPPER(p.programa) NOT LIKE '%MAESTRIA%'
+                    AND UPPER(p.programa) NOT LIKE '%DOCTORADO%'
+                    AND UPPER(p.programa) NOT LIKE '%EXTENSION%'
+                    AND UPPER(p.programa) NOT LIKE '%ADMINISTRATIVO%'
+                GROUP BY p.programa
+                ORDER BY total_estudiantes DESC
+                LIMIT 15
+            """)).fetchall()
+            
+            # ============================================
+            # 2. DATOS PARA LA TABLA PAGINADA
+            # ============================================
+            programas_tabla = conn.execute(text("""
+                SELECT 
+                    p.programa,
+                    COUNT(DISTINCT m.estudiante_id) as total_estudiantes,
+                    COUNT(m.id) as total_matriculas,
+                    SUM(CASE WHEN m.estado = 'Confirmado' THEN 1 ELSE 0 END) as confirmados,
+                    SUM(CASE WHEN m.estado = 'Por confirmar' THEN 1 ELSE 0 END) as por_confirmar
+                FROM matriculas m
+                JOIN programas p ON m.programa_id = p.id
+                WHERE UPPER(p.programa) NOT LIKE '%ESPECIALIZACION%'
+                    AND UPPER(p.programa) NOT LIKE '%MAESTRIA%'
+                    AND UPPER(p.programa) NOT LIKE '%DOCTORADO%'
+                    AND UPPER(p.programa) NOT LIKE '%EXTENSION%'
+                    AND UPPER(p.programa) NOT LIKE '%ADMINISTRATIVO%'
+                GROUP BY p.programa
+                ORDER BY total_estudiantes DESC
+                LIMIT :limit OFFSET :offset
+            """), {
+                "limit": programas_por_pagina,
+                "offset": offset
+            }).fetchall()
+            
+            # ============================================
+            # 3. CONTEO TOTAL para paginación
+            # ============================================
+            total_programas = conn.execute(text("""
+                SELECT COUNT(DISTINCT p.programa)
+                FROM programas p
+                JOIN matriculas m ON p.id = m.programa_id
+                WHERE UPPER(p.programa) NOT LIKE '%ESPECIALIZACION%'
+                    AND UPPER(p.programa) NOT LIKE '%MAESTRIA%'
+                    AND UPPER(p.programa) NOT LIKE '%DOCTORADO%'
+                    AND UPPER(p.programa) NOT LIKE '%EXTENSION%'
+                    AND UPPER(p.programa) NOT LIKE '%ADMINISTRATIVO%'
+            """)).scalar() or 0
+            
+            # ============================================
+            # 4. ESTADÍSTICAS GENERALES
+            # ============================================
+            total_estudiantes = conn.execute(text("""
+                SELECT COUNT(DISTINCT estudiante_id) FROM matriculas
+            """)).scalar() or 0
+            
+            total_matriculas = conn.execute(text("""
+                SELECT COUNT(*) FROM matriculas
+            """)).scalar() or 0
+            
+            programas_activos = conn.execute(text("""
+                SELECT COUNT(DISTINCT programa_id) FROM matriculas
+            """)).scalar() or 0
+        
+        # ============================================
+        # 5. CÁLCULOS PARA PAGINACIÓN
+        # ============================================
+        total_paginas = (total_programas + programas_por_pagina - 1) // programas_por_pagina
+        
+        # Preparar datos para gráfico
+        programas_labels = [p[0] for p in programas_grafico]
+        programas_estudiantes = [p[1] for p in programas_grafico]
+        
+        # Preparar datos para tabla
+        tabla_programas = []
+        for programa in programas_tabla:
+            porcentaje_confirmados = (programa[3] / programa[2] * 100) if programa[2] > 0 else 0
+            tabla_programas.append({
+                'nombre': programa[0],
+                'estudiantes': programa[1],
+                'matriculas': programa[2],
+                'confirmados': programa[3],
+                'por_confirmar': programa[4],
+                'porcentaje_confirmados': round(porcentaje_confirmados, 1)
+            })
+        
+        return render_template('programas.html',
+                             # Para gráfico
+                             programas_labels=programas_labels,
+                             programas_estudiantes=programas_estudiantes,
+                             
+                             # Para tabla
+                             tabla_programas=tabla_programas,
+                             
+                             # Para estadísticas
+                             total_programas=total_programas,
+                             total_estudiantes=total_estudiantes,
+                             total_matriculas=total_matriculas,
+                             programas_activos=programas_activos,
+                             
+                             # Para paginación
+                             pagina_actual=pagina,
+                             total_paginas=total_paginas,
+                             programas_por_pagina=programas_por_pagina)
+        
+    except Exception as e:
+        print(f"Error en dashboard programas: {e}")
+        flash(f"Error cargando datos de programas: {str(e)}", "error")
+        return render_template('programas.html',
+                             programas_labels=[],
+                             programas_estudiantes=[],
+                             tabla_programas=[],
+                             total_programas=0,
+                             total_estudiantes=0,
+                             total_matriculas=0,
+                             programas_activos=0,
+                             pagina_actual=1,
+                             total_paginas=1,
+                             programas_por_pagina=10)
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
+
+# Agrega ESTAS FUNCIONES NUEVAS en app.py:
+

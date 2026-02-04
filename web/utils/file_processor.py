@@ -72,8 +72,11 @@ def procesar_excel_completo(filepath, filename):
                 })
         resultados.append(("Estudiantes", True, f"{len(estudiantes_df)} cargados"))
         
-        # 3. Cargar programas
-        programas_df = df[["codigo_programa", "programa"]].drop_duplicates().dropna()
+        # 3. Cargar programas (
+        programas_df = df[["codigo_programa", "programa"]].drop_duplicates(subset=["programa"]).dropna()
+        
+        # Aplicar normalización a los nombres de programas
+        programas_df['programa'] = programas_df['programa'].apply(normalizar_programa_sin_tildes)
         programas_df['codigo_programa'] = programas_df['codigo_programa'].astype(str)
         
         with engine.begin() as conn:
@@ -105,6 +108,11 @@ def procesar_excel_completo(filepath, filename):
         # Preparar datos
         matriculas_df = df.dropna(subset=["documento", "programa", "estado"]).copy()
         matriculas_df['documento'] = matriculas_df['documento'].astype(str)
+        
+        # IMPORTANTE: Aplicar normalización también a la columna 'programa' en matriculas_df
+        # para que coincida con los programas normalizados en la base de datos
+        matriculas_df['programa'] = matriculas_df['programa'].apply(normalizar_programa_sin_tildes)
+        
         estudiantes_db['documento'] = estudiantes_db['documento'].astype(str)
         
         # Merge para obtener IDs
@@ -147,3 +155,40 @@ def procesar_excel_completo(filepath, filename):
         resultados.append(("Error", False, f"Error general: {str(e)}"))
     
     return resultados
+
+def normalizar_programa_sin_tildes(nombre):
+    """
+    Normaliza nombres de programas quitando tildes de TODOS los programas
+    """
+    if not nombre or not isinstance(nombre, str):
+        return nombre
+    
+    nombre = nombre.strip().upper()
+    
+    # Reemplazar tildes y caracteres especiales
+    reemplazos = {
+        'Á': 'A', 'É': 'E', 'Í': 'I', 'Ó': 'O', 'Ú': 'U',
+        'À': 'A', 'È': 'E', 'Ì': 'I', 'Ò': 'O', 'Ù': 'U',
+        'Ä': 'A', 'Ë': 'E', 'Ï': 'I', 'Ö': 'O', 'Ü': 'U',
+        'Ñ': 'N'
+    }
+    
+    for tilde, sin_tilde in reemplazos.items():
+        nombre = nombre.replace(tilde, sin_tilde)
+    
+    # También normalizar variantes comunes
+    reemplazos_adicionales = {
+        'ADMINISTRACIÓN': 'ADMINISTRACION',
+        'INGENIERÍA': 'INGENIERIA',
+        'PSICOLOGÍA': 'PSICOLOGIA',
+        'CONTADURÍA': 'CONTADURIA',
+        'PUBLICIDAD': 'PUBLICIDAD',
+        'MERCADEO': 'MERCADEO',
+        'DERECHO': 'DERECHO',
+        'SISTEMAS': 'SISTEMAS'
+    }
+    
+    for original, normalizado in reemplazos_adicionales.items():
+        nombre = nombre.replace(original, normalizado)
+    
+    return nombre

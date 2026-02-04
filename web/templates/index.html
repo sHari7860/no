@@ -37,20 +37,27 @@
   </div>
 
   <div class="col-xl-3 col-md-6 mb-4">
-    <div class="card stat-card border-left-success shadow h-100 py-2">
-      <div class="card-body">
-        <div class="row no-gutters align-items-center">
-          <div class="col mr-2">
-            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
-              Total Programas</div>
-            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.programas|default(0) }}</div>
+    <a href="/programas" class="text-decoration-none">
+      <div class="card stat-card border-left-primary shadow h-100 py-2 hover-card">
+        <div class="card-body">
+          <div class="row no-gutters align-items-center">
+            <div class="col mr-2">
+              <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                Total Programas</div>
+              <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.programas|default(0) }}</div>
+            </div>
+            <div class="col-auto">
+              <i class="bi bi-people-fill fa-2x text-primary"></i>
+            </div>
           </div>
-          <div class="col-auto">
-            <i class="bi bi-book-half fa-2x text-success"></i>
+          <div class="text-end mt-2">
+            <small class="text-primary">
+              <i class="bi bi-arrow-right"></i> Ver detalles
+            </small>
           </div>
         </div>
       </div>
-    </div>
+    </a>
   </div>
 
   <div class="col-xl-3 col-md-6 mb-4">
@@ -288,16 +295,61 @@
   </div>
 </div>
 
+<!-- DEBUG: Solo para verificar datos (puedes quitarlo después) -->
+<div class="row mt-3" id="debugSection" style="display: none;">
+  <div class="col-12">
+    <div class="alert alert-info">
+      <h6><i class="bi bi-bug"></i> Debug Info</h6>
+      <p>Total programas en lista: {{ por_programa|length }}</p>
+      <p>Datos crudos: {{ por_programa }}</p>
+      {% if por_programa %}
+      <table class="table table-sm">
+        <tr><th>#</th><th>Programa</th><th>Cantidad</th></tr>
+        {% for programa in por_programa %}
+        <tr><td>{{ loop.index }}</td><td>{{ programa[0] }}</td><td>{{ programa[1] }}</td></tr>
+        {% endfor %}
+      </table>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-  // Toggle entre tabla y gráfico
+  // Preparar datos ANTES del evento click
+  let programasLabels = [];
+  let programasData = [];
+  
+  {% if por_programa %}
+    {% for programa in por_programa %}
+      programasLabels.push("{{ programa[0] }}");
+      programasData.push({{ programa[1] }});
+    {% endfor %}
+  {% endif %}
+  
+  console.log("Datos preparados para gráfico:", {
+    labels: programasLabels,
+    data: programasData,
+    count: programasLabels.length
+  });
+  
+  // Activar debug si presionas Ctrl+Shift+D
+  document.addEventListener('keydown', function(e) {
+    if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+      const debugSection = document.getElementById('debugSection');
+      debugSection.style.display = debugSection.style.display === 'none' ? 'block' : 'none';
+    }
+  });
+  
+  // Toggle entre tabla y gráfico - VERSIÓN CORREGIDA
   document.getElementById('toggleView').addEventListener('click', function () {
     const tableView = document.getElementById('tableView');
     const chartView = document.getElementById('chartView');
     const toggleBtn = document.getElementById('toggleView');
+    const canvas = document.getElementById('programasChart');
 
     if (tableView.style.display !== 'none') {
       // Cambiar a gráfico
@@ -305,49 +357,97 @@
       chartView.style.display = 'block';
       toggleBtn.innerHTML = '<i class="bi bi-table"></i> Cambiar a Tabla';
 
-      // Crear gráfico si no existe
-      if (!window.programasChart) {
-        const ctx = document.getElementById('programasChart').getContext('2d');
-        window.programasChart = new Chart(ctx, {
-          type: 'bar',
-          data: {
-            labels: {{ por_programa | map(attribute=0) | list | tojson | safe }},
-            datasets: [{
-              label: 'Matriculados',
-              data: {{ por_programa | map(attribute=1) | list | tojson | safe }},
-              backgroundColor: 'rgba(54, 162, 235, 0.7)',
-              borderColor: 'rgba(54, 162, 235, 1)',
-              borderWidth: 1
-            }]
-          },
-          options: {
-            responsive: true,
-            plugins: {
-              legend: {
-                display: true
-              },
-              title: {
-                display: true,
-                text: 'Programas más Solicitados'
+      // Verificar si hay datos
+      if (programasLabels.length === 0 || programasData.length === 0) {
+        chartView.innerHTML = `
+          <div class="alert alert-warning text-center py-5">
+            <i class="bi bi-exclamation-triangle display-4"></i>
+            <h4 class="mt-3">No hay datos para mostrar el gráfico</h4>
+            <p>No se encontraron datos de programas.</p>
+            <p class="small text-muted">Verifica que hayas importado un archivo Excel y que la consulta en app.py esté funcionando.</p>
+          </div>
+        `;
+        return;
+      }
+
+      // Destruir gráfico anterior si existe
+      if (window.programasChart instanceof Chart) {
+        window.programasChart.destroy();
+      }
+
+      // Crear nuevo gráfico
+      const ctx = canvas.getContext('2d');
+      window.programasChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: programasLabels,
+          datasets: [{
+            label: 'Matrículas',
+            data: programasData,
+            backgroundColor: '#4361ee',
+            borderColor: '#3a56d4',
+            borderWidth: 2,
+            borderRadius: 5
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: true,
+              position: 'top',
+            },
+            title: {
+              display: true,
+              text: 'Programas con más Matrículas',
+              font: {
+                size: 16
               }
             },
-            scales: {
-              y: {
-                beginAtZero: true,
-                title: {
-                  display: true,
-                  text: 'Número de Matrículas'
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  return `${context.dataset.label}: ${context.raw}`;
                 }
               }
             }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              title: {
+                display: true,
+                text: 'Número de Matrículas'
+              },
+              ticks: {
+                callback: function(value) {
+                  return value.toLocaleString();
+                }
+              }
+            },
+            x: {
+              ticks: {
+                autoSkip: false,
+                maxRotation: 45,
+                minRotation: 45
+              }
+            }
           }
-        });
-      }
+        }
+      });
+      
     } else {
       // Cambiar a tabla
       tableView.style.display = 'block';
       chartView.style.display = 'none';
       toggleBtn.innerHTML = '<i class="bi bi-bar-chart"></i> Cambiar a Gráfico';
+      
+      // Destruir gráfico para liberar memoria
+      if (window.programasChart instanceof Chart) {
+        window.programasChart.destroy();
+        window.programasChart = null;
+      }
     }
   });
 </script>

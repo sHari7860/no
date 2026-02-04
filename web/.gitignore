@@ -1,0 +1,2 @@
+git rm -r --cached "**/*.exe"
+git rm -r --cached "**/*.msi"
