@@ -1,0 +1,230 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Matrículas{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <h1 class="mb-4">Dashboard de Matrículas</h1>
+        
+        {% if ultimo_archivo %}
+        <div class="alert alert-info">
+            <strong>Último archivo importado:</strong> {{ ultimo_archivo[0] }} 
+            <br><small>Importado el: {{ ultimo_archivo[1] }} | Registros: {{ ultimo_archivo[2] }}</small>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Tarjetas de resumen -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-white bg-primary">
+            <div class="card-body">
+                <h5 class="card-title">Total Estudiantes</h5>
+                <h2 class="card-text">{{ total_estudiantes }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-success">
+            <div class="card-body">
+                <h5 class="card-title">Total Matrículas</h5>
+                <h2 class="card-text">{{ total_matriculas }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-warning">
+            <div class="card-body">
+                <h5 class="card-title">Programas Activos</h5>
+                <h2 class="card-text">{{ total_programas }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-info">
+            <div class="card-body">
+                <h5 class="card-title">Último Período</h5>
+                <h2 class="card-text">
+                    {% if stats_periodo %}
+                        {{ stats_periodo[0][0] }}
+                    {% else %}
+                        N/A
+                    {% endif %}
+                </h2>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Gráficos -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5>Distribución por Categoría</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="categoriaChart"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5>Tipos de Programas</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="programaChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5>Estados de Matrícula</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="estadoChart"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5>Evolución por Período</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="evolucionChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tablas de datos -->
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5>Top 10 Programas Más Solicitados</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Programa</th>
+                                <th>Matrículas</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for programa, total in top_programas %}
+                            <tr>
+                                <td>{{ programa }}</td>
+                                <td><span class="badge bg-primary">{{ total }}</span></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5>Matrículas por Período</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Período</th>
+                                <th>Matrículas</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for periodo, total in stats_periodo %}
+                            <tr>
+                                <td>{{ periodo }}</td>
+                                <td><span class="badge bg-success">{{ total }}</span></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Cargar datos de la API
+    fetch('/api/estadisticas')
+        .then(response => response.json())
+        .then(data => {
+            // Gráfico de categorías
+            new Chart(document.getElementById('categoriaChart'), {
+                type: 'pie',
+                data: {
+                    labels: data.categorias.labels,
+                    datasets: [{
+                        data: data.categorias.data,
+                        backgroundColor: [
+                            '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', 
+                            '#9966FF', '#FF9F40', '#C9CBCF'
+                        ]
+                    }]
+                }
+            });
+            
+            // Gráfico de tipos de programa
+            new Chart(document.getElementById('programaChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: data.tipos_programa.labels,
+                    datasets: [{
+                        data: data.tipos_programa.data,
+                        backgroundColor: [
+                            '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0'
+                        ]
+                    }]
+                }
+            });
+            
+            // Gráfico de estados
+            new Chart(document.getElementById('estadoChart'), {
+                type: 'bar',
+                data: {
+                    labels: data.estados.labels,
+                    datasets: [{
+                        label: 'Matrículas',
+                        data: data.estados.data,
+                        backgroundColor: '#36A2EB'
+                    }]
+                }
+            });
+            
+            // Gráfico de evolución
+            new Chart(document.getElementById('evolucionChart'), {
+                type: 'line',
+                data: {
+                    labels: data.evolucion.labels,
+                    datasets: [{
+                        label: 'Estudiantes únicos',
+                        data: data.evolucion.data,
+                        borderColor: '#FF6384',
+                        fill: false
+                    }]
+                }
+            });
+        });
+</script>
+{% endblock %}

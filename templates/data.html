@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+
+{% block title %}Datos de Matrículas{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">Datos de Matrículas</h1>
+
+<!-- Filtros -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5>Filtros</h5>
+    </div>
+    <div class="card-body">
+        <form method="GET" class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">Período</label>
+                <select name="periodo" class="form-select">
+                    <option value="">Todos</option>
+                    {% for p in periodos %}
+                    <option value="{{ p[0] }}" {% if p[0] == periodo_actual %}selected{% endif %}>
+                        {{ p[0] }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Programa</label>
+                <select name="programa" class="form-select">
+                    <option value="">Todos</option>
+                    {% for p in programas %}
+                    <option value="{{ p[0] }}" {% if p[0] == programa_actual %}selected{% endif %}>
+                        {{ p[0] }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Categoría</label>
+                <select name="categoria" class="form-select">
+                    <option value="">Todas</option>
+                    {% for c in categorias %}
+                    <option value="{{ c[0] }}" {% if c[0] == categoria_actual %}selected{% endif %}>
+                        {{ c[0] }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary me-2">Filtrar</button>
+                <a href="{{ url_for('view_data') }}" class="btn btn-secondary">Limpiar</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Resultados -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5>Resultados ({{ total }} registros)</h5>
+        <div>
+            <span class="badge bg-info">Página {{ page }} de {{ total_pages }}</span>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead>
+                    <tr>
+                        <th>Documento</th>
+                        <th>Nombre</th>
+                        <th>Programa</th>
+                        <th>Período</th>
+                        <th>Categoría</th>
+                        <th>Estado</th>
+                        <th>Fecha Inscripción</th>
+                        <th>Liquidación</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in datos %}
+                    <tr>
+                        <td>{{ row[0] }}</td>
+                        <td>{{ row[1] }}</td>
+                        <td>
+                            {{ row[2] }}
+                            <br><small class="text-muted">{{ row[3] }}</small>
+                        </td>
+                        <td>{{ row[4] }}</td>
+                        <td>
+                            <span class="badge 
+                                {% if row[5] == 'NUEVO' %}bg-success
+                                {% elif row[5] == 'ANTIGUO' %}bg-primary
+                                {% elif row[5] == 'REINTEGRO' %}bg-warning
+                                {% else %}bg-secondary{% endif %}">
+                                {{ row[5] }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="badge 
+                                {% if row[6] == 'Confirmado' %}bg-success
+                                {% elif row[6] == 'Por confirmar' %}bg-warning
+                                {% elif row[6] == 'Cancelado' %}bg-danger
+                                {% else %}bg-secondary{% endif %}">
+                                {{ row[6] }}
+                            </span>
+                        </td>
+                        <td>{{ row[7] }}</td>
+                        <td>{{ row[8] }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Paginación -->
+        {% if total_pages > 1 %}
+        <nav aria-label="Page navigation">
+            <ul class="pagination justify-content-center">
+                {% if page > 1 %}
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page-1 }}&periodo={{ periodo_actual }}&programa={{ programa_actual }}&categoria={{ categoria_actual }}">
+                        Anterior
+                    </a>
+                </li>
+                {% endif %}
+                
+                {% for p in range(1, total_pages + 1) %}
+                    {% if p >= page-2 and p <= page+2 %}
+                    <li class="page-item {% if p == page %}active{% endif %}">
+                        <a class="page-link" href="?page={{ p }}&periodo={{ periodo_actual }}&programa={{ programa_actual }}&categoria={{ categoria_actual }}">
+                            {{ p }}
+                        </a>
+                    </li>
+                    {% endif %}
+                {% endfor %}
+                
+                {% if page < total_pages %}
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page+1 }}&periodo={{ periodo_actual }}&programa={{ programa_actual }}&categoria={{ categoria_actual }}">
+                        Siguiente
+                    </a>
+                </li>
+                {% endif %}
+            </ul>
+        </nav>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
