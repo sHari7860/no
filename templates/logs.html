@@ -3,11 +3,28 @@
 {% block title %}Auditoría{% endblock %}
 
 {% block content %}
-<h1 class="mb-4">Bitácora de movimientos</h1>
+<h1 class="mb-4">Movimientos</h1>
 <div class="card">
     <div class="card-body">
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <label class="form-label">Filtrar por usuario</label>
+                <select id="filtroUsuario" class="form-select">
+                    <option value="">Todos</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Desde (fecha/hora)</label>
+                <input type="datetime-local" id="filtroDesde" class="form-control">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Hasta (fecha/hora)</label>
+                <input type="datetime-local" id="filtroHasta" class="form-control">
+            </div>
+        </div>
+
         <div class="table-responsive">
-            <table class="table table-sm table-striped">
+            <table class="table table-sm table-striped" id="tablaLogs">
                 <thead>
                     <tr>
                         <th>Usuario</th>
@@ -17,19 +34,146 @@
                         <th>Fecha</th>
                     </tr>
                 </thead>
-                <tbody>
-                    {% for row in logs %}
+                <tbody id="cuerpoLogs">
                     <tr>
-                        <td>{{ row[0] }}</td>
-                        <td>{{ row[1] }}</td>
-                        <td>{{ row[2] }}</td>
-                        <td>{{ row[3] }}</td>
-                        <td>{{ row[4] }}</td>
+                        <td colspan="5" class="text-center text-muted py-4">Cargando registros...</td>
                     </tr>
-                    {% endfor %}
                 </tbody>
             </table>
         </div>
+
+        <div class="d-flex justify-content-between align-items-center mt-2">
+            <div>
+                <button id="prevPage" class="btn btn-sm btn-outline-primary">&larr; Anterior</button>
+                <button id="nextPage" class="btn btn-sm btn-outline-primary">Siguiente &rarr;</button>
+            </div>
+            <div>
+                <small>Página <span id="paginaActual">1</span> / <span id="totalPaginas">1</span></small>
+            </div>
+        </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Construir arreglo de logs desde la variable Jinja
+    const logsData = [
+        {% for row in logs %}
+        {
+            user: "{{ (row[0] or '')|e }}",
+            accion: "{{ (row[1] or '')|e }}",
+            detalle: "{{ (row[2] or '')|e }}",
+            ip: "{{ (row[3] or '')|e }}",
+            fecha: "{{ row[4] }}"
+        }{% if not loop.last %},{% endif %}
+        {% endfor %}
+    ];
+
+    // Helpers para parsear fecha/tiempo en formato compatible
+    function parseFecha(fechaStr) {
+        if (!fechaStr) return null;
+        let s = String(fechaStr).trim();
+        // Manejar formatos con o sin microsegundos y con T o espacio
+        s = s.replace(' ', 'T');
+        s = s.split('.')[0];
+        const d = new Date(s);
+        if (!isNaN(d.getTime())) return d;
+        // Intentar parseo más flexible
+        const d2 = new Date(Date.parse(fechaStr));
+        return isNaN(d2.getTime()) ? null : d2;
+    }
+
+    const pageSize = 10;
+    let currentPage = 1;
+    let filtered = logsData.slice();
+
+    // Poblar select de usuarios
+    function poblarUsuarios() {
+        const users = [...new Set(logsData.map(l => (l.user || '').toString().trim()).filter(Boolean))].sort((a,b)=> a.localeCompare(b));
+        const sel = document.getElementById('filtroUsuario');
+        users.forEach(u => {
+            const opt = document.createElement('option');
+            opt.value = u;
+            opt.textContent = u;
+            sel.appendChild(opt);
+        });
+    }
+
+    function aplicarFiltros() {
+        const usuarioRaw = document.getElementById('filtroUsuario').value || '';
+        const usuario = usuarioRaw.toString().trim().toLowerCase();
+        const desdeVal = document.getElementById('filtroDesde').value;
+        const hastaVal = document.getElementById('filtroHasta').value;
+        const desde = desdeVal ? new Date(desdeVal) : null;
+        const hasta = hastaVal ? new Date(hastaVal) : null;
+
+        filtered = logsData.filter(l => {
+            if (usuario && l.user !== usuario) return false;
+            const f = parseFecha(l.fecha);
+            if (desde && (!f || f < desde)) return false;
+            if (hasta && (!f || f > hasta)) return false;
+            return true;
+        });
+        currentPage = 1;
+        renderPage();
+    }
+
+    function formatFechaHora(fechaStr) {
+        const d = parseFecha(fechaStr);
+        if (!d) return '';
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        const hh = String(d.getHours()).padStart(2, '0');
+        const mm = String(d.getMinutes()).padStart(2, '0');
+        const ss = String(d.getSeconds()).padStart(2, '0');
+        return `${y}-${m}-${day} ${hh}:${mm}:${ss}`;
+    }
+
+    function renderPage() {
+        const tbody = document.getElementById('cuerpoLogs');
+        tbody.innerHTML = '';
+        const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+        document.getElementById('totalPaginas').textContent = totalPages;
+        document.getElementById('paginaActual').textContent = currentPage;
+
+        const start = (currentPage - 1) * pageSize;
+        const pageItems = filtered.slice(start, start + pageSize);
+
+        if (pageItems.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No hay registros para los filtros seleccionados</td></tr>';
+            return;
+        }
+
+        pageItems.forEach(r => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${r.user}</td>
+                <td>${r.accion}</td>
+                <td>${r.detalle}</td>
+                <td>${r.ip}</td>
+                <td>${formatFechaHora(r.fecha)}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    document.getElementById('prevPage').addEventListener('click', () => {
+        if (currentPage > 1) { currentPage--; renderPage(); }
+    });
+    document.getElementById('nextPage').addEventListener('click', () => {
+        const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+        if (currentPage < totalPages) { currentPage++; renderPage(); }
+    });
+
+    document.getElementById('filtroUsuario').addEventListener('change', aplicarFiltros);
+    document.getElementById('filtroDesde').addEventListener('change', aplicarFiltros);
+    document.getElementById('filtroHasta').addEventListener('change', aplicarFiltros);
+
+    // Inicializar
+    poblarUsuarios();
+    filtered = logsData.slice();
+    renderPage();
+});
+</script>
 {% endblock %}

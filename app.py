@@ -93,7 +93,13 @@ def index():
     cursor.execute('SELECT COUNT(*) FROM matriculas')
     total_matriculas = cursor.fetchone()[0]
 
-    cursor.execute('SELECT COUNT(*) FROM programas')
+    cursor.execute('''
+        SELECT COUNT(DISTINCT p.id)
+        FROM programas p
+        LEFT JOIN matriculas m ON p.id = m.programa_id
+        LEFT JOIN estados_matricula e ON m.estado_matricula_id = e.id
+        WHERE LOWER(e.nombre) = 'confirmado'
+    ''')
     total_programas = cursor.fetchone()[0]
 
     cursor.execute('SELECT nombre_archivo, fecha_importacion, total_registros FROM archivos_importados ORDER BY fecha_importacion DESC LIMIT 1')
@@ -193,6 +199,49 @@ def get_estadisticas():
         'tipos_programa': {'labels': [r[0] for r in tipos_programa_data], 'data': [r[1] for r in tipos_programa_data]},
         'estados': {'labels': [r[0] for r in estados_data], 'data': [r[1] for r in estados_data]},
         'evolucion': {'labels': [r[0] for r in evolucion_data], 'data': [r[1] for r in evolucion_data]},
+    })
+
+
+@app.route('/programas-detalles')
+@login_required
+def programas_detalles():
+    log_action('VIEW_PROGRAMAS_DETALLES', 'Acceso a página de detalles de programas')
+    return render_template('programas_detalles.html')
+
+
+@app.route('/api/programas-detalles')
+@login_required
+def get_programas_detalles():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Obtener todos los programas con detalles (solo confirmados)
+    cursor.execute('''
+        SELECT p.nombre_original, 
+               COUNT(CASE WHEN LOWER(e.nombre) = 'confirmado' THEN 1 END) AS confirmados,
+               COUNT(CASE WHEN LOWER(e.nombre) = 'confirmado' AND LOWER(c.nombre) = 'nuevo' THEN 1 END) AS nuevos,
+               COUNT(CASE WHEN LOWER(e.nombre) = 'confirmado' AND LOWER(c.nombre) = 'antiguo' THEN 1 END) AS antiguos
+        FROM programas p
+        LEFT JOIN matriculas m ON p.id = m.programa_id
+        LEFT JOIN categorias c ON m.categoria_id = c.id
+        LEFT JOIN estados_matricula e ON m.estado_matricula_id = e.id
+        WHERE p.nombre_original IS NOT NULL
+        GROUP BY p.nombre_original
+        ORDER BY confirmados DESC, p.nombre_original
+    ''')
+    programas_data = cursor.fetchall()
+    conn.close()
+
+    return jsonify({
+        'programas': [
+            {
+                'nombre': r[0],
+                'confirmados': r[1] or 0,
+                'nuevos': r[2] or 0,
+                'antiguos': r[3] or 0
+            }
+            for r in programas_data
+        ]
     })
 
 

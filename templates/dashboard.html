@@ -109,8 +109,11 @@
 <div class="row">
     <div class="col-md-6">
         <div class="card">
-            <div class="card-header">
-                <h5>Top 10 Programas Más Solicitados</h5>
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Programas Más Solicitados</h5>
+                <a href="{{ url_for('programas_detalles') }}" class="btn btn-sm btn-primary">
+                    Ver todos
+                </a>
             </div>
             <div class="card-body">
                 <div class="table-responsive">
@@ -118,14 +121,12 @@
                         <thead>
                             <tr>
                                 <th>Programa</th>
-                                <th>Matrículas</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for programa, total in top_programas %}
                             <tr>
                                 <td>{{ programa }}</td>
-                                <td><span class="badge bg-primary">{{ total }}</span></td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -166,6 +167,36 @@
 
 {% block scripts %}
 <script>
+    // Plugin para mostrar etiquetas con datos en gráficos
+    const datalabelsPlugin = {
+        id: 'datalabels',
+        afterDatasetsDraw(chart) {
+            const ctx = chart.ctx;
+            chart.data.datasets.forEach((dataset, datasetIndex) => {
+                const meta = chart.getDatasetMeta(datasetIndex);
+                meta.data.forEach((datapoint, index) => {
+                    const value = dataset.data[index];
+                    
+                    if (chart.config.type === 'bar') {
+                        const { x, y } = datapoint.getProps(['x', 'y']);
+                        ctx.fillStyle = '#333';
+                        ctx.font = 'bold 12px Arial';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'bottom';
+                        ctx.fillText(value, x, y - 5);
+                    } else if (chart.config.type === 'line') {
+                        const { x, y } = datapoint.getProps(['x', 'y']);
+                        ctx.fillStyle = '#FF6384';
+                        ctx.font = 'bold 11px Arial';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'bottom';
+                        ctx.fillText(value, x, y - 8);
+                    }
+                });
+            });
+        }
+    };
+
     // Cargar datos de la API
     fetch('/api/estadisticas')
         .then(response => response.json())
@@ -174,7 +205,7 @@
             new Chart(document.getElementById('categoriaChart'), {
                 type: 'pie',
                 data: {
-                    labels: data.categorias.labels,
+                    labels: data.categorias.labels.map((label, i) => `${label} (${data.categorias.data[i]})`),
                     datasets: [{
                         data: data.categorias.data,
                         backgroundColor: [
@@ -182,21 +213,41 @@
                             '#9966FF', '#FF9F40', '#C9CBCF'
                         ]
                     }]
-                }
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                },
+                plugins: [datalabelsPlugin]
             });
             
             // Gráfico de tipos de programa
             new Chart(document.getElementById('programaChart'), {
                 type: 'doughnut',
                 data: {
-                    labels: data.tipos_programa.labels,
+                    labels: data.tipos_programa.labels.map((label, i) => `${label} (${data.tipos_programa.data[i]})`),
                     datasets: [{
                         data: data.tipos_programa.data,
                         backgroundColor: [
                             '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0'
                         ]
                     }]
-                }
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                },
+                plugins: [datalabelsPlugin]
             });
             
             // Gráfico de estados
@@ -209,7 +260,17 @@
                         data: data.estados.data,
                         backgroundColor: '#36A2EB'
                     }]
-                }
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                },
+                plugins: [datalabelsPlugin]
             });
             
             // Gráfico de evolución
@@ -221,9 +282,20 @@
                         label: 'Estudiantes únicos',
                         data: data.evolucion.data,
                         borderColor: '#FF6384',
-                        fill: false
+                        fill: false,
+                        tension: 0.4
                     }]
-                }
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                },
+                plugins: [datalabelsPlugin]
             });
         });
 </script>

@@ -1,12 +1,74 @@
-# Ignorar todos los Excel
-*.xlsx
-*.xls
-
-# PERO permitir los Excel dentro de web/upload
-!web/uploads/*.xlsx
-!web/uploads/*.xls
-
-# Otros
-venv/
+# Python caches and compiled files
 __pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+pip-wheel-metadata/
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+env.bak/
+venv.bak/
+
+# Flask instance and DB files
+instance/
+*.db
+*.sqlite3
+
+# Uploaded files and user data
+uploads/
+
+# Editor/IDE files
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs and temp files
+*.log
+*.bak
+*.tmp
+*.swp
+
+# Environment variables
+.env
+.env.*
+
+# Jupyter
+.ipynb_checkpoints/
+
+# MyPy
+.mypy_cache/
+
+# Node
+node_modules/
+
+# Build artifacts
 *.pyc
+*.pyo
+
