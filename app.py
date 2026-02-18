@@ -2,7 +2,8 @@ from flask import Flask, render_template, request, redirect, url_for, flash, jso
 import os
 from functools import wraps
 from io import BytesIO
-from datetime import datetime
+from datetime import datetime, timedelta
+import secrets
 from werkzeug.utils import secure_filename
 from werkzeug.security import check_password_hash
 
@@ -13,6 +14,8 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'clave-secreta-para-flask')
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
+# Session lifetime (e.g., 30 minutes)
+app.permanent_session_lifetime = timedelta(minutes=30)
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 ALLOWED_EXTENSIONS = {'xlsx', 'xls'}
@@ -31,6 +34,39 @@ def login_required(view_func):
         return view_func(*args, **kwargs)
 
     return wrapper
+
+
+@app.before_request
+def require_login():
+    # Allow access to login and static assets without authentication
+    exempt_endpoints = {'login', 'static'}
+    endpoint = request.endpoint
+    if endpoint in exempt_endpoints or endpoint is None:
+        return
+
+    # If user has a session token, validate expiration
+    user_id = session.get('user_id')
+    if not user_id:
+        return redirect(url_for('login'))
+
+    expires = session.get('auth_expires')
+    if not expires:
+        session.clear()
+        return redirect(url_for('login'))
+
+    try:
+        expires_ts = float(expires)
+    except Exception:
+        session.clear()
+        return redirect(url_for('login'))
+
+    if datetime.utcnow().timestamp() > expires_ts:
+        session.clear()
+        flash('Tu sesión ha expirado. Por favor inicia sesión de nuevo.', 'warning')
+        return redirect(url_for('login'))
+
+    # Refresh sliding expiration on activity
+    session['auth_expires'] = (datetime.utcnow() + app.permanent_session_lifetime).timestamp()
 
 
 def log_action(action, detail=''):
@@ -63,10 +99,14 @@ def login():
             flash('Credenciales inválidas', 'error')
             return render_template('login.html')
 
+        session.permanent = True
         session['user_id'] = user[0]
         session['username'] = user[1]
         session['nombre_completo'] = user[3]
         session['rol'] = user[4]
+        # Create a token and expiration timestamp
+        session['auth_token'] = secrets.token_urlsafe(32)
+        session['auth_expires'] = (datetime.utcnow() + app.permanent_session_lifetime).timestamp()
         log_action('LOGIN', 'Inicio de sesión')
         return redirect(url_for('index'))
 
@@ -118,7 +158,7 @@ def index():
         FROM matriculas m
         JOIN programas p ON m.programa_id = p.id
         JOIN estados_matricula e ON m.estado_matricula_id = e.id
-        WHERE e.nombre = 'Confirmado'
+        WHERE LOWER(e.nombre) = 'confirmado'
         GROUP BY p.nombre_original
         ORDER BY total DESC
         LIMIT 10
@@ -126,9 +166,11 @@ def index():
     top_programas = cursor.fetchall()
 
     cursor.execute('''
-        SELECT pr.codigo_periodo, COUNT(m.id) AS total
+        SELECT pr.codigo_periodo, COUNT(DISTINCT m.estudiante_id) AS total
         FROM matriculas m
         JOIN periodos pr ON m.periodo_id = pr.id
+        JOIN estados_matricula e ON m.estado_matricula_id = e.id
+        WHERE LOWER(e.nombre) = 'confirmado'
         GROUP BY pr.codigo_periodo
         ORDER BY pr.codigo_periodo DESC
     ''')
@@ -181,16 +223,16 @@ def get_estadisticas():
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    cursor.execute('SELECT c.nombre, COUNT(m.id) FROM matriculas m JOIN categorias c ON m.categoria_id = c.id GROUP BY c.nombre')
+    cursor.execute('SELECT c.nombre, COUNT(m.id) FROM matriculas m JOIN categorias c ON m.categoria_id = c.id JOIN estados_matricula e ON m.estado_matricula_id = e.id WHERE LOWER(e.nombre) = \'confirmado\' GROUP BY c.nombre')
     categorias_data = cursor.fetchall()
 
-    cursor.execute('SELECT p.tipo_programa, COUNT(m.id) FROM matriculas m JOIN programas p ON m.programa_id = p.id GROUP BY p.tipo_programa')
+    cursor.execute('SELECT p.tipo_programa, COUNT(m.id) FROM matriculas m JOIN programas p ON m.programa_id = p.id JOIN estados_matricula e ON m.estado_matricula_id = e.id WHERE LOWER(e.nombre) = \'confirmado\' GROUP BY p.tipo_programa')
     tipos_programa_data = cursor.fetchall()
 
     cursor.execute('SELECT e.nombre, COUNT(m.id) FROM estados_matricula e JOIN matriculas m ON m.estado_matricula_id = e.id GROUP BY e.nombre')
     estados_data = cursor.fetchall()
 
-    cursor.execute('SELECT pr.codigo_periodo, COUNT(DISTINCT m.estudiante_id) FROM matriculas m JOIN periodos pr ON m.periodo_id = pr.id GROUP BY pr.codigo_periodo ORDER BY pr.codigo_periodo')
+    cursor.execute('SELECT pr.codigo_periodo, COUNT(DISTINCT m.estudiante_id) FROM matriculas m JOIN periodos pr ON m.periodo_id = pr.id JOIN estados_matricula e ON m.estado_matricula_id = e.id WHERE LOWER(e.nombre) = \'confirmado\' GROUP BY pr.codigo_periodo ORDER BY pr.codigo_periodo')
     evolucion_data = cursor.fetchall()
     conn.close()
 
@@ -216,11 +258,12 @@ def get_programas_detalles():
     cursor = conn.cursor()
 
     # Obtener todos los programas con detalles (solo confirmados)
+    # Nuevos = categoría NUEVO, Antiguos = categoría ANTIGUO + REINTEGRO
     cursor.execute('''
         SELECT p.nombre_original, 
                COUNT(CASE WHEN LOWER(e.nombre) = 'confirmado' THEN 1 END) AS confirmados,
                COUNT(CASE WHEN LOWER(e.nombre) = 'confirmado' AND LOWER(c.nombre) = 'nuevo' THEN 1 END) AS nuevos,
-               COUNT(CASE WHEN LOWER(e.nombre) = 'confirmado' AND LOWER(c.nombre) = 'antiguo' THEN 1 END) AS antiguos
+               COUNT(CASE WHEN LOWER(e.nombre) = 'confirmado' AND LOWER(c.nombre) IN ('antiguo', 'reintegro') THEN 1 END) AS antiguos
         FROM programas p
         LEFT JOIN matriculas m ON p.id = m.programa_id
         LEFT JOIN categorias c ON m.categoria_id = c.id
@@ -252,6 +295,15 @@ def view_data():
     periodo = request.args.get('periodo', '')
     programa = request.args.get('programa', '')
     categoria = request.args.get('categoria', '')
+    # Estado filter: if parameter is missing, default to 'confirmado'
+    # If parameter is present but empty string, treat as 'Todos' (no filter)
+    estado_param = request.args.get('estado', None)
+    if estado_param is None:
+        estado_filter = 'confirmado'
+        estado_actual = 'Confirmado'
+    else:
+        estado_actual = estado_param
+        estado_filter = estado_param if estado_param != '' else None
     page = int(request.args.get('page', 1))
     per_page = 50
 
@@ -277,6 +329,9 @@ def view_data():
     if categoria:
         query += ' AND c.nombre = %s'
         params.append(categoria)
+    if estado_filter:
+        query += ' AND LOWER(em.nombre) = %s'
+        params.append(estado_filter.lower())
 
     query += ' ORDER BY m.fecha_inscripcion DESC'
 
@@ -295,13 +350,16 @@ def view_data():
     categorias_list = cursor.fetchall()
     cursor.execute('SELECT DISTINCT nombre_original FROM programas ORDER BY nombre_original')
     programas_list = cursor.fetchall()
+    cursor.execute('SELECT DISTINCT nombre FROM estados_matricula ORDER BY nombre')
+    estados_list = cursor.fetchall()
 
     conn.close()
     total_pages = (total + per_page - 1) // per_page
 
     return render_template('data.html', datos=datos, periodos=periodos, categorias=categorias_list,
                            programas=programas_list, periodo_actual=periodo, categoria_actual=categoria,
-                           programa_actual=programa, page=page, total_pages=total_pages, total=total)
+                           programa_actual=programa, page=page, total_pages=total_pages, total=total,
+                           estados=estados_list, estado_actual=estado_actual)
 
 
 @app.route('/export')

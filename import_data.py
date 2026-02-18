@@ -1,5 +1,7 @@
 import pandas as pd
 import re
+import glob
+import os
 from models import normalize_text, normalize_phone
 from database import get_db_connection
 
@@ -93,6 +95,9 @@ def import_excel_to_db(filepath, filename, actor=None):
     nuevos_estudiantes = 0
     nuevas_matriculas = 0
     programas_nuevos = 0
+    registros_duplicados = 0
+    estudiantes_existentes = 0
+    programas_existentes = 0
 
     for _, row in df.iterrows():
         if pd.isna(row.get('documento')) or str(row.get('documento')).strip() == '':
@@ -123,6 +128,8 @@ def import_excel_to_db(filepath, filename, actor=None):
         )
         if cursor.rowcount > 0:
             nuevos_estudiantes += 1
+        else:
+            estudiantes_existentes += 1
 
         cursor.execute(
             'SELECT id FROM estudiantes WHERE documento = %s AND nombre_normalizado = %s',
@@ -151,6 +158,8 @@ def import_excel_to_db(filepath, filename, actor=None):
         )
         if cursor.rowcount > 0:
             programas_nuevos += 1
+        else:
+            programas_existentes += 1
 
         cursor.execute('SELECT id FROM programas WHERE nombre_normalizado = %s', (programa_normalizado,))
         programa_id = cursor.fetchone()[0]
@@ -187,6 +196,8 @@ def import_excel_to_db(filepath, filename, actor=None):
         )
         if cursor.rowcount > 0:
             nuevas_matriculas += 1
+        else:
+            registros_duplicados += 1
 
     cursor.execute(
         '''
@@ -212,11 +223,27 @@ def import_excel_to_db(filepath, filename, actor=None):
     conn.commit()
     conn.close()
 
+    # Borrar archivos Excel previos (mantener solo el último importado)
+    try:
+        for ext in ['*.xlsx', '*.xls']:
+            for archivo in glob.glob(os.path.join(os.path.dirname(filepath), ext)):
+                # No borrar el archivo actual
+                if archivo != filepath:
+                    try:
+                        os.remove(archivo)
+                    except Exception as e:
+                        print(f'Advertencia: No se pudo borrar {archivo}: {str(e)}')
+    except Exception as e:
+        print(f'Advertencia: Error al limpiar archivos previos: {str(e)}')
+
     return {
         'success': True,
         'total_registros': len(df),
         'nuevos_estudiantes': nuevos_estudiantes,
+        'estudiantes_existentes': estudiantes_existentes,
         'nuevas_matriculas': nuevas_matriculas,
+        'registros_duplicados': registros_duplicados,
         'programas_nuevos': programas_nuevos,
+        'programas_existentes': programas_existentes,
         'periodo': periodo_codigo,
     }
