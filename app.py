@@ -36,6 +36,25 @@ def login_required(view_func):
     return wrapper
 
 
+def role_required(*allowed_roles):
+    """Decorador para limitar acceso a rutas según el rol del usuario."""
+    def decorator(view_func):
+        @wraps(view_func)
+        def wrapper(*args, **kwargs):
+            if 'user_id' not in session:
+                flash('Debes iniciar sesión para continuar', 'error')
+                return redirect(url_for('login'))
+            
+            user_role = session.get('rol', 'operador')
+            if user_role not in allowed_roles:
+                flash('No tienes permisos para acceder a esta página', 'error')
+                return redirect(url_for('index'))
+            
+            return view_func(*args, **kwargs)
+        return wrapper
+    return decorator
+
+
 @app.before_request
 def require_login():
     # Allow access to login and static assets without authentication
@@ -184,7 +203,7 @@ def index():
 
 
 @app.route('/upload', methods=['GET', 'POST'])
-@login_required
+@role_required('admin', 'operador')
 def upload_file():
     if request.method == 'POST':
         if 'file' not in request.files:
@@ -324,8 +343,8 @@ def view_data():
         query += ' AND per.codigo_periodo = %s'
         params.append(periodo)
     if programa:
-        query += ' AND pr.nombre_normalizado LIKE %s'
-        params.append(f'%{programa.lower()}%')
+        query += ' AND pr.nombre_original = %s'
+        params.append(programa)
     if categoria:
         query += ' AND c.nombre = %s'
         params.append(categoria)
@@ -402,7 +421,7 @@ def export_data():
 
 
 @app.route('/logs')
-@login_required
+@role_required('admin', 'operador')
 def view_logs():
     conn = get_db_connection()
     cursor = conn.cursor()

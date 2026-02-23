@@ -79,7 +79,7 @@ def extraer_periodo(nombre_archivo):
     return "2026-1"
 
 def procesar_excel_completo(filepath, filename):
-    """Procesa un archivo Excel completo - VERSIÓN CORREGIDA"""
+    """Procesa un archivo Excel completo"""
     resultados = []
     
     try:
@@ -98,7 +98,7 @@ def procesar_excel_completo(filepath, filename):
             "correo_institucional", "categoria", "extra"
         ]
         
-        # ========== CORRECCIONES CRÍTICAS ==========
+       
         
         # 1. Convertir documento a string y limpiar
         df['documento'] = df['documento'].astype(str).str.strip()
@@ -112,7 +112,7 @@ def procesar_excel_completo(filepath, filename):
         # 4. Normalizar programas
         df['programa'] = df['programa'].apply(normalizar_programa_sin_tildes)
         
-        # ========== FIN CORRECCIONES ==========
+      
         
         # 1. Extraer y cargar periodo
         periodo = extraer_periodo(filename)
