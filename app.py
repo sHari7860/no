@@ -324,7 +324,7 @@ def view_data():
         estado_actual = estado_param
         estado_filter = estado_param if estado_param != '' else None
     page = int(request.args.get('page', 1))
-    per_page = 50
+    per_page = 10
 
     query = '''
         SELECT e.documento, e.nombre_completo, pr.nombre_original, pr.tipo_programa,
