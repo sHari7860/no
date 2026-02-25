@@ -1,4 +1,4 @@
-/* CSS Reset básico */
+/* CSS Reset */
 * {
     margin: 0;
     padding: 0;
@@ -6,277 +6,335 @@
 }
 
 body {
-    background-color: #f0f2f5;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-    line-height: 1.5;
-    color: #1a1a1a;
-    padding: 20px;
+    background: #faf9f6;
+    font-family: 'Quicksand', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    line-height: 1.6;
+    color: #2d3e50;
+    padding: 24px;
     min-height: 100vh;
 }
 
-/* Navbar simple y funcional */
+/* Navbar flotante */
 .navbar {
-    background-color: white;
-    padding: 1rem 2rem;
-    margin-bottom: 30px;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    background: white;
+    padding: 1.2rem 2.5rem;
+    margin-bottom: 35px;
+    border-radius: 40px;
+    box-shadow: 0 10px 30px rgba(53, 205, 216, 0.1);
     display: flex;
     align-items: center;
-    gap: 2rem;
+    gap: 2.5rem;
+    border: 2px solid #e6f7ff;
+    animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-3px); }
 }
 
 .navbar a {
-    color: #1a1a1a;
+    color: #5c6b7e;
     text-decoration: none;
-    font-weight: 500;
+    font-weight: 600;
     padding: 0.5rem 0;
+    position: relative;
+    transition: color 0.3s ease;
 }
 
 .navbar a:hover {
-    color: #0066cc;
+    color: #35cdd8;
 }
 
-/* Cards limpias */
+/* Cards tiernas */
 .card {
     background: white;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    margin-bottom: 25px;
+    border-radius: 35px;
+    box-shadow: 0 15px 35px rgba(53, 205, 216, 0.1);
+    margin-bottom: 30px;
     overflow: hidden;
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    border: 2px solid #e6f7ff;
+    position: relative;
+}
+
+.card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 6px;
+    background: linear-gradient(90deg, #35cdd8, #9adaff, #35cdd8);
+    background-size: 200% 200%;
+    animation: gradientMove 3s ease infinite;
+}
+
+@keyframes gradientMove {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+.card:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 25px 45px rgba(53, 205, 216, 0.15);
 }
 
 .card-header {
-    padding: 1.25rem 1.5rem;
-    background-color: #f8f9fa;
-    border-bottom: 1px solid #e9ecef;
-    font-weight: 600;
-    font-size: 1.1rem;
+    padding: 1.5rem 2rem;
+    background: #ffffff;
+    border-bottom: 2px solid #e6f7ff;
+    font-weight: 700;
+    font-size: 1.3rem;
+    color: #4a5f73;
+    letter-spacing: -0.3px;
 }
 
 .card-body {
-    padding: 1.5rem;
+    padding: 2rem;
 }
 
-/* Tablas simples */
+/* Tablas estáticas y limpias */
 .table {
     width: 100%;
     border-collapse: collapse;
     text-align: left;
+    background: white;
+    border-radius: 25px;
+    overflow: hidden;
 }
 
 .table th {
-    padding: 0.75rem 1rem;
-    background-color: #f8f9fa;
-    font-weight: 600;
-    color: #495057;
-    border-bottom: 2px solid #dee2e6;
+    padding: 1rem 1.5rem;
+    font-weight: 700;
+    color: #35cdd8;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    background: #f0faff;
+    border-bottom: 2px solid #e6f7ff;
 }
 
 .table td {
-    padding: 0.75rem 1rem;
-    border-bottom: 1px solid #e9ecef;
+    padding: 1rem 1.5rem;
+    color: #4a5f73;
+    font-weight: 500;
+    border-bottom: 1px solid #e6f7ff;
 }
 
-.table tbody tr:hover {
-    background-color: #f8f9fa;
+.table tbody tr:last-child td {
+    border-bottom: none;
 }
 
-/* Badges simples */
+.table tbody tr:hover td {
+    background: #f0faff;
+}
+
+/* Badges estáticos */
 .badge {
     display: inline-block;
-    padding: 0.35rem 0.65rem;
+    padding: 0.4rem 1.2rem;
     font-size: 0.75rem;
-    font-weight: 600;
-    border-radius: 4px;
-    background-color: #e9ecef;
-    color: #1a1a1a;
+    font-weight: 700;
+    border-radius: 40px;
+    background: #e6f7ff;
+    color: #5c6b7e;
+    border: none;
 }
 
 .badge-primary {
-    background-color: #0066cc;
+    background: #35cdd8;
     color: white;
 }
 
 .badge-success {
-    background-color: #28a745;
-    color: white;
+    background: #b0e9ca;
+    color: #2d6a4f;
 }
 
 .badge-danger {
-    background-color: #dc3545;
-    color: white;
+    background: #ffb3b3;
+    color: #9e2a2a;
 }
 
 .badge-warning {
-    background-color: #ffc107;
-    color: #1a1a1a;
+    background: #ffe5b4;
+    color: #9e7b2a;
 }
 
-/* Canvas simple */
+/* Canvas con gráficas */
+.canvas-container {
+    position: relative;
+    padding: 15px;
+    background: #ffffff;
+    border-radius: 35px;
+    border: 2px solid #e6f7ff;
+}
+
 canvas {
     max-height: 300px;
     width: 100%;
-    border-radius: 4px;
+    border-radius: 25px;
+    background: #ffffff;
 }
 
-/* Alertas simples */
+/* Barras animadas solo al cargar */
+.chart-bar-container {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    height: 200px;
+    padding: 20px 10px;
+}
+
+.chart-bar {
+    flex: 1;
+    background: linear-gradient(180deg, #35cdd8, #9adaff);
+    border-radius: 20px 20px 8px 8px;
+    animation: growBar 1s ease-out forwards;
+    transform-origin: bottom;
+    transform: scaleY(0);
+}
+
+@keyframes growBar {
+    to { transform: scaleY(1); }
+}
+
+/* Alertas sin animaciones */
 .alert {
-    padding: 1rem 1.25rem;
-    margin-bottom: 20px;
-    border-radius: 4px;
-    background-color: #f8f9fa;
-    border-left: 4px solid #0066cc;
+    padding: 1.2rem 2rem;
+    margin-bottom: 25px;
+    border-radius: 40px;
+    background: white;
+    border: 2px solid;
+    color: #4a5f73;
 }
 
 .alert-success {
-    background-color: #d4edda;
-    border-left-color: #28a745;
-    color: #155724;
+    border-color: #b0e9ca;
+    background: #f0fdf4;
 }
-
 .alert-danger {
-    background-color: #f8d7da;
-    border-left-color: #dc3545;
-    color: #721c24;
+    border-color: #ffb3b3;
+    background: #fff0f0;
 }
 
 .alert-warning {
-    background-color: #fff3cd;
-    border-left-color: #ffc107;
-    color: #856404;
+    border-color: #ffe5b4;
+    background: #fff9e6;
 }
 
-/* Formularios simples */
+/* Formularios sin opacidad */
 .form-group {
-    margin-bottom: 1rem;
+    margin-bottom: 1.8rem;
 }
 
 .form-label {
     display: block;
-    margin-bottom: 0.5rem;
-    font-weight: 500;
-    color: #495057;
+    margin-bottom: 0.7rem;
+    font-weight: 600;
+    color: #35cdd8;
+    font-size: 0.95rem;
+    letter-spacing: 0.3px;
 }
 
 .form-control,
 .form-select {
     width: 100%;
-    padding: 0.625rem 0.75rem;
+    padding: 1rem 1.5rem;
     font-size: 1rem;
-    border: 1px solid #ced4da;
-    border-radius: 4px;
+    border: 2px solid #e6f7ff;
+    border-radius: 40px;
     background-color: white;
-    transition: border-color 0.15s ease-in-out;
+    transition: border-color 0.3s ease;
+    font-family: inherit;
+    color: #4a5f73;
 }
 
 .form-control:focus,
 .form-select:focus {
     outline: none;
-    border-color: #0066cc;
-    box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1);
+    border-color: #35cdd8;
 }
 
-/* Botones simples */
+.form-control:hover,
+.form-select:hover {
+    border-color: #35cdd8;
+}
+
+/* Botones sin efectos de opacidad */
 .btn {
     display: inline-block;
-    padding: 0.625rem 1.25rem;
+    padding: 1rem 2.5rem;
     font-size: 1rem;
-    font-weight: 500;
+    font-weight: 700;
     text-align: center;
     border: none;
-    border-radius: 4px;
+    border-radius: 50px;
     cursor: pointer;
-    background-color: #f8f9fa;
-    color: #1a1a1a;
-    transition: all 0.15s ease-in-out;
+    background: #e6f7ff;
+    color: #5c6b7e;
+    transition: transform 0.3s ease;
+    border: 2px solid transparent;
 }
 
 .btn:hover {
-    background-color: #e9ecef;
+    transform: translateY(-3px);
+    background: #35cdd8;
+    color: white;
+}
+
+.btn:active {
+    transform: translateY(0);
 }
 
 .btn-primary {
-    background-color: #0066cc;
+    background: linear-gradient(135deg, #35cdd8, #9adaff);
     color: white;
-}
-
-.btn-primary:hover {
-    background-color: #0052a3;
+    border: none;
 }
 
 .btn-success {
-    background-color: #28a745;
-    color: white;
-}
-
-.btn-success:hover {
-    background-color: #218838;
+    background: linear-gradient(135deg, #b0e9ca, #8fd9b0);
+    color: #2d6a4f;
+    border: none;
 }
 
 .btn-danger {
-    background-color: #dc3545;
+    background: linear-gradient(135deg, #ffb3b3, #ff8a8a);
     color: white;
+    border: none;
 }
 
-.btn-danger:hover {
-    background-color: #c82333;
-}
-
-/* Utilidades de espaciado */
-.mt-1 { margin-top: 0.5rem; }
-.mt-2 { margin-top: 1rem; }
-.mt-3 { margin-top: 1.5rem; }
-.mt-4 { margin-top: 2rem; }
-
-.mb-1 { margin-bottom: 0.5rem; }
-.mb-2 { margin-bottom: 1rem; }
-.mb-3 { margin-bottom: 1.5rem; }
-.mb-4 { margin-bottom: 2rem; }
-
-.ml-1 { margin-left: 0.5rem; }
-.ml-2 { margin-left: 1rem; }
-
-.mr-1 { margin-right: 0.5rem; }
-.mr-2 { margin-right: 1rem; }
-
-.p-1 { padding: 0.5rem; }
-.p-2 { padding: 1rem; }
-.p-3 { padding: 1.5rem; }
-.p-4 { padding: 2rem; }
-
-/* Grid simple */
+/* Grid */
 .row {
     display: flex;
     flex-wrap: wrap;
-    margin: -0.5rem;
+    margin: -0.75rem;
 }
 
 .col {
     flex: 1;
-    padding: 0.5rem;
+    padding: 0.75rem;
 }
 
-/* Responsive básico */
+/* Responsive */
 @media (max-width: 768px) {
     body {
-        padding: 10px;
+        padding: 16px;
     }
     
     .navbar {
-        padding: 1rem;
+        padding: 1rem 1.5rem;
         flex-direction: column;
-        gap: 0.5rem;
-    }
-    
-    .navbar a {
-        width: 100%;
-        text-align: center;
+        gap: 0.8rem;
+        animation: none;
     }
     
     .card-header,
     .card-body {
-        padding: 1rem;
+        padding: 1.25rem;
     }
     
     .table {
@@ -284,8 +342,12 @@ canvas {
         overflow-x: auto;
     }
     
+    .table td {
+        padding: 1rem;
+    }
+    
     canvas {
-        max-height: 250px;
+        max-height: 200px;
     }
     
     .row {
@@ -298,40 +360,39 @@ canvas {
 .text-left { text-align: left; }
 .text-right { text-align: right; }
 
-.text-muted { color: #6c757d; }
-.text-primary { color: #0066cc; }
-.text-success { color: #28a745; }
-.text-danger { color: #dc3545; }
+.text-muted { color: #a5b3c2; }
+.text-primary { color: #35cdd8; }
+.text-success { color: #6fbf8f; }
+.text-danger { color: #ff8a8a; }
 
-/* Utilidades de display */
+/* Display */
 .d-none { display: none; }
 .d-block { display: block; }
 .d-flex { display: flex; }
 .d-inline-block { display: inline-block; }
 
-/* Utilidades de flex */
+/* Flex */
 .justify-content-between { justify-content: space-between; }
 .justify-content-center { justify-content: center; }
 .align-items-center { align-items: center; }
 
 /* Bordes */
-.border { border: 1px solid #dee2e6; }
-.border-top { border-top: 1px solid #dee2e6; }
-.border-bottom { border-bottom: 1px solid #dee2e6; }
+.border { border: 2px solid #e6f7ff; }
 .border-0 { border: none; }
-
-.rounded { border-radius: 4px; }
+.rounded { border-radius: 25px; }
+.rounded-lg { border-radius: 35px; }
+.rounded-xl { border-radius: 50px; }
 .rounded-circle { border-radius: 50%; }
 
 /* Sombras */
-.shadow { box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); }
-.shadow-sm { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); }
-.shadow-lg { box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15); }
+.shadow { box-shadow: 0 15px 35px rgba(53, 205, 216, 0.1); }
+.shadow-lg { box-shadow: 0 25px 45px rgba(53, 205, 216, 0.15); }
 
-/* Colores de fondo */
-.bg-white { background-color: white; }
-.bg-light { background-color: #f8f9fa; }
-.bg-primary { background-color: #0066cc; }
-.bg-success { background-color: #28a745; }
-.bg-danger { background-color: #dc3545; }
-.bg-warning { background-color: #ffc107; }
+/* Fondos */
+.bg-white { background: white; }
+.bg-light { background: #f0faff; }
+.bg-primary { background: linear-gradient(135deg, #35cdd8, #9adaff); color: white; }
+.bg-success { background: linear-gradient(135deg, #b0e9ca, #8fd9b0); color: #2d6a4f; }
+.bg-danger { background: linear-gradient(135deg, #ffb3b3, #ff8a8a); color: white; }
+.bg-warning { background: linear-gradient(135deg, #ffe5b4, #ffd98c); color: #9e7b2a; }
+.bg-soft { background: #e6f7ff; }
