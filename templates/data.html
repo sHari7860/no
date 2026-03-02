@@ -56,6 +56,11 @@
                     {% endfor %}
                 </select>
             </div>
+            <div class="col-md-3">
+                <label class="form-label">Filas por página</label>
+                <input type="number" name="per_page" min="1" max="{{ total }}" class="form-control form-control-sm" value="{{ per_page }}">
+                <small class="form-text text-muted">Máx {{ total }}</small>
+            </div>
             <div class="col-md-3 d-flex align-items-end">
                 <button type="submit" class="btn btn-primary me-2">Filtrar</button>
                 <a href="{{ url_for('view_data') }}" class="btn btn-secondary">Limpiar</a>
@@ -129,7 +134,7 @@
             <ul class="pagination justify-content-center">
                 {% if page > 1 %}
                 <li class="page-item">
-                    <a class="page-link" href="?page={{ page-1 }}&periodo={{ periodo_actual }}&programa={{ programa_actual }}&categoria={{ categoria_actual }}&estado={{ estado_actual }}">
+                    <a class="page-link" href="?page={{ page-1 }}&periodo={{ periodo_actual }}&programa={{ programa_actual }}&categoria={{ categoria_actual }}&estado={{ estado_actual }}&per_page={{ per_page }}">
                         Anterior
                     </a>
                 </li>
@@ -138,7 +143,7 @@
                 {% for p in range(1, total_pages + 1) %}
                     {% if p >= page-2 and p <= page+2 %}
                     <li class="page-item {% if p == page %}active{% endif %}">
-                        <a class="page-link" href="?page={{ p }}&periodo={{ periodo_actual }}&programa={{ programa_actual }}&categoria={{ categoria_actual }}&estado={{ estado_actual }}">
+                        <a class="page-link" href="?page={{ p }}&periodo={{ periodo_actual }}&programa={{ programa_actual }}&categoria={{ categoria_actual }}&estado={{ estado_actual }}&per_page={{ per_page }}">
                             {{ p }}
                         </a>
                     </li>
@@ -147,7 +152,7 @@
                 
                 {% if page < total_pages %}
                 <li class="page-item">
-                    <a class="page-link" href="?page={{ page+1 }}&periodo={{ periodo_actual }}&programa={{ programa_actual }}&categoria={{ categoria_actual }}&estado={{ estado_actual }}">
+                    <a class="page-link" href="?page={{ page+1 }}&periodo={{ periodo_actual }}&programa={{ programa_actual }}&categoria={{ categoria_actual }}&estado={{ estado_actual }}&per_page={{ per_page }}">
                         Siguiente
                     </a>
                 </li>

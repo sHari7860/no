@@ -324,7 +324,13 @@ def view_data():
         estado_actual = estado_param
         estado_filter = estado_param if estado_param != '' else None
     page = int(request.args.get('page', 1))
-    per_page = 10
+    # allow client to request number of rows per page, default 10
+    try:
+        per_page = int(request.args.get('per_page', 10))
+    except ValueError:
+        per_page = 10
+    # cap per_page to a reasonable maximum (e.g. 1000) to avoid abuse
+    per_page = max(1, min(per_page, 1000))
 
     query = '''
         SELECT e.documento, e.nombre_completo, pr.nombre_original, pr.tipo_programa,
@@ -375,10 +381,12 @@ def view_data():
     conn.close()
     total_pages = (total + per_page - 1) // per_page
 
+    # pass total and current per_page so client can enforce maximum
     return render_template('data.html', datos=datos, periodos=periodos, categorias=categorias_list,
                            programas=programas_list, periodo_actual=periodo, categoria_actual=categoria,
                            programa_actual=programa, page=page, total_pages=total_pages, total=total,
-                           estados=estados_list, estado_actual=estado_actual)
+                           estados=estados_list, estado_actual=estado_actual,
+                           per_page=per_page)
 
 
 @app.route('/export')
