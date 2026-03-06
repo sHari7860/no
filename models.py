@@ -151,6 +151,23 @@ def init_db():
             (estado,),
         )
 
+    periodos_base = ['20253', '20254', '20255', '20257']
+    try:
+        ultimo_periodo = max(int(periodo) for periodo in periodos_base)
+    except ValueError:
+        ultimo_periodo = 20257
+
+    periodos_futuros = [str(ultimo_periodo + offset) for offset in range(1, 7)]
+    for periodo in periodos_base + periodos_futuros:
+        cursor.execute(
+            '''
+            INSERT INTO periodos (codigo_periodo, nombre)
+            VALUES (%s, %s)
+            ON CONFLICT (codigo_periodo) DO NOTHING
+            ''',
+            (periodo, f'Período {periodo}'),
+        )
+
     default_user = os.getenv('APP_ADMIN_USER', 'admin')
     default_password = os.getenv('APP_ADMIN_PASSWORD', 'admin123')
     default_name = os.getenv('APP_ADMIN_NAME', 'Administrador')

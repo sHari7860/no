@@ -48,11 +48,41 @@
                 <h5 class="card-title">Último Período</h5>
                 <h2 class="card-text">
                     {% if stats_periodo %}
-                        {{ stats_periodo[0][0] }}
+                        {{ periodo_actual_modulo }}
                     {% else %}
                         N/A
                     {% endif %}
                 </h2>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Módulos por período académico -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Módulos por Período Académico</h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    {% for periodo, estudiantes, matriculas, es_actual in stats_periodo %}
+                    <div class="col-md-3 col-sm-6">
+                        <div class="border rounded p-3 h-100">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <strong>{{ periodo }}</strong>
+                                {% if es_actual %}<span class="badge bg-success">Actual</span>{% else %}<span class="badge bg-primary">Módulo</span>{% endif %}
+                            </div>
+                            <div class="small text-muted">Estudiantes: {{ estudiantes or 0 }}</div>
+                            <div class="small text-muted mb-3">Matrículas: {{ matriculas or 0 }}</div>
+                            <a href="{{ url_for('view_data', periodo=periodo) }}" class="btn btn-sm btn-outline-primary w-100">
+                                Ver período
+                            </a>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
             </div>
         </div>
     </div>
@@ -150,10 +180,10 @@
                             </tr>
                         </thead>
                         <tbody>
-                            {% for periodo, total in stats_periodo %}
+                            {% for periodo, estudiantes, matriculas, es_actual in stats_periodo %}
                             <tr>
                                 <td>{{ periodo }}</td>
-                                <td><span class="badge bg-success">{{ total }}</span></td>
+                                <td><span class="badge bg-success">{{ matriculas or 0 }}</span></td>
                             </tr>
                             {% endfor %}
                         </tbody>

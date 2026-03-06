@@ -108,34 +108,65 @@ def import_excel_to_db(filepath, filename, actor=None):
         nombre_normalizado = normalize_text(nombre_completo)
         telefono_principal, telefono_adicional = process_telefono(row.get('telefonos', ''))
 
-        cursor.execute(
-            '''
-            INSERT INTO estudiantes (
-                documento, nombre_completo, nombre_normalizado, telefono_normalizado,
-                telefono_adicional, correo_personal, correo_institucional
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (documento, nombre_normalizado) DO NOTHING
-            ''',
-            (
-                documento,
-                nombre_completo,
-                nombre_normalizado,
-                telefono_principal,
-                telefono_adicional,
-                str(row.get('correo_electronico', '')).strip(),
-                str(row.get('correo_institucional', '')).strip(),
-            ),
-        )
-        if cursor.rowcount > 0:
-            nuevos_estudiantes += 1
-        else:
-            estudiantes_existentes += 1
+        correo_personal = str(row.get('correo_electronico', '')).strip()
+        correo_institucional = str(row.get('correo_institucional', '')).strip()
 
+        # Resolver estudiante por clave exacta y luego por documento para mantener continuidad entre periodos
         cursor.execute(
-            'SELECT id FROM estudiantes WHERE documento = %s AND nombre_normalizado = %s',
+            'SELECT id FROM estudiantes WHERE documento = %s AND nombre_normalizado = %s ORDER BY id LIMIT 1',
             (documento, nombre_normalizado),
         )
-        estudiante_id = cursor.fetchone()[0]
+        estudiante_existente = cursor.fetchone()
+
+        if not estudiante_existente:
+            cursor.execute('SELECT id FROM estudiantes WHERE documento = %s ORDER BY id LIMIT 1', (documento,))
+            estudiante_existente = cursor.fetchone()
+
+        if estudiante_existente:
+            estudiante_id = estudiante_existente[0]
+            estudiantes_existentes += 1
+            cursor.execute(
+                '''
+                UPDATE estudiantes
+                SET nombre_completo = %s,
+                    nombre_normalizado = %s,
+                    telefono_normalizado = %s,
+                    telefono_adicional = %s,
+                    correo_personal = %s,
+                    correo_institucional = %s
+                WHERE id = %s
+                ''',
+                (
+                    nombre_completo,
+                    nombre_normalizado,
+                    telefono_principal,
+                    telefono_adicional,
+                    correo_personal,
+                    correo_institucional,
+                    estudiante_id,
+                ),
+            )
+        else:
+            cursor.execute(
+                '''
+                INSERT INTO estudiantes (
+                    documento, nombre_completo, nombre_normalizado, telefono_normalizado,
+                    telefono_adicional, correo_personal, correo_institucional
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+                ''',
+                (
+                    documento,
+                    nombre_completo,
+                    nombre_normalizado,
+                    telefono_principal,
+                    telefono_adicional,
+                    correo_personal,
+                    correo_institucional,
+                ),
+            )
+            estudiante_id = cursor.fetchone()[0]
+            nuevos_estudiantes += 1
 
         programa_nombre = str(row.get('programa', '')).strip()
         programa_normalizado = normalize_text(programa_nombre)
@@ -176,35 +207,66 @@ def import_excel_to_db(filepath, filename, actor=None):
 
         cursor.execute(
             '''
-            INSERT INTO matriculas (
-                periodo_id, estudiante_id, programa_id, liquidacion_numero,
-                categoria_id, estado_matricula_id, fecha_inscripcion, novedad, archivo_origen
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (periodo_id, estudiante_id, programa_id) DO NOTHING
+            SELECT id
+            FROM matriculas
+            WHERE periodo_id = %s AND estudiante_id = %s AND programa_id = %s
             ''',
-            (
-                periodo_id,
-                estudiante_id,
-                programa_id,
-                str(row.get('liquidacion_numero', '')).strip(),
-                categoria_id,
-                estado_matricula_id,
-                str(row.get('fecha_inscripcion', '')).strip(),
-                str(row.get('novedad', '')).strip(),
-                filename,
-            ),
+            (periodo_id, estudiante_id, programa_id),
         )
-        if cursor.rowcount > 0:
-            nuevas_matriculas += 1
-        else:
+        matricula_existente = cursor.fetchone()
+
+        if matricula_existente:
+            cursor.execute(
+                '''
+                UPDATE matriculas
+                SET liquidacion_numero = %s,
+                    categoria_id = %s,
+                    estado_matricula_id = %s,
+                    fecha_inscripcion = %s,
+                    novedad = %s,
+                    archivo_origen = %s,
+                    fecha_importacion = CURRENT_TIMESTAMP
+                WHERE id = %s
+                ''',
+                (
+                    str(row.get('liquidacion_numero', '')).strip(),
+                    categoria_id,
+                    estado_matricula_id,
+                    str(row.get('fecha_inscripcion', '')).strip(),
+                    str(row.get('novedad', '')).strip(),
+                    filename,
+                    matricula_existente[0],
+                ),
+            )
             registros_duplicados += 1
+        else:
+            cursor.execute(
+                '''
+                INSERT INTO matriculas (
+                    periodo_id, estudiante_id, programa_id, liquidacion_numero,
+                    categoria_id, estado_matricula_id, fecha_inscripcion, novedad, archivo_origen
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ''',
+                (
+                    periodo_id,
+                    estudiante_id,
+                    programa_id,
+                    str(row.get('liquidacion_numero', '')).strip(),
+                    categoria_id,
+                    estado_matricula_id,
+                    str(row.get('fecha_inscripcion', '')).strip(),
+                    str(row.get('novedad', '')).strip(),
+                    filename,
+                ),
+            )
+            nuevas_matriculas += 1
 
     cursor.execute(
         '''
-        INSERT INTO archivos_importados (nombre_archivo, periodo_id, total_registros, nuevos_registros)
-        VALUES (%s, %s, %s, %s)
+        INSERT INTO archivos_importados (nombre_archivo, periodo_id, total_registros, nuevos_registros, registros_actualizados)
+        VALUES (%s, %s, %s, %s, %s)
         ''',
-        (filename, periodo_id, len(df), nuevas_matriculas),
+        (filename, periodo_id, len(df), nuevas_matriculas, registros_duplicados),
     )
 
     if actor:

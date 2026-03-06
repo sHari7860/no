@@ -19,6 +19,35 @@ app.permanent_session_lifetime = timedelta(minutes=30)
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 ALLOWED_EXTENSIONS = {'xlsx', 'xls'}
+def get_period_modules(cursor):
+    """Obtiene todos los periodos como módulos, marcando el período actual con datos."""
+    cursor.execute(
+        '''
+        WITH conteos AS (
+            SELECT
+                pr.codigo_periodo,
+                COUNT(DISTINCT m.estudiante_id) AS estudiantes,
+                COUNT(m.id) AS matriculas
+            FROM periodos pr
+            LEFT JOIN matriculas m ON m.periodo_id = pr.id
+            GROUP BY pr.codigo_periodo
+        ),
+        actual AS (
+            SELECT MAX(codigo_periodo) AS codigo_actual
+            FROM conteos
+            WHERE matriculas > 0
+        )
+        SELECT
+            c.codigo_periodo,
+            c.estudiantes,
+            c.matriculas,
+            CASE WHEN c.codigo_periodo = a.codigo_actual THEN TRUE ELSE FALSE END AS es_actual
+        FROM conteos c
+        CROSS JOIN actual a
+        ORDER BY c.codigo_periodo DESC
+        '''
+    )
+    return cursor.fetchall()
 
 
 def allowed_file(filename):
@@ -184,22 +213,15 @@ def index():
     ''')
     top_programas = cursor.fetchall()
 
-    cursor.execute('''
-        SELECT pr.codigo_periodo, COUNT(DISTINCT m.estudiante_id) AS total
-        FROM matriculas m
-        JOIN periodos pr ON m.periodo_id = pr.id
-        JOIN estados_matricula e ON m.estado_matricula_id = e.id
-        WHERE LOWER(e.nombre) = 'confirmado'
-        GROUP BY pr.codigo_periodo
-        ORDER BY pr.codigo_periodo DESC
-    ''')
-    stats_periodo = cursor.fetchall()
+    stats_periodo = get_period_modules(cursor)
+    periodo_actual_modulo = next((p[0] for p in stats_periodo if p[3]), stats_periodo[0][0] if stats_periodo else 'N/A')
 
     conn.close()
 
     return render_template('dashboard.html', total_estudiantes=total_estudiantes, total_matriculas=total_matriculas,
                            total_programas=total_programas, ultimo_archivo=ultimo_archivo,
-                           stats_categoria=stats_categoria, top_programas=top_programas, stats_periodo=stats_periodo)
+                           stats_categoria=stats_categoria, top_programas=top_programas, stats_periodo=stats_periodo,
+                           periodo_actual_modulo=periodo_actual_modulo)
 
 
 @app.route('/upload', methods=['GET', 'POST'])
@@ -369,8 +391,7 @@ def view_data():
     cursor.execute(query, params)
     datos = cursor.fetchall()
 
-    cursor.execute('SELECT DISTINCT codigo_periodo FROM periodos ORDER BY codigo_periodo DESC')
-    periodos = cursor.fetchall()
+    periodos = get_period_modules(cursor)
     cursor.execute('SELECT DISTINCT nombre FROM categorias ORDER BY nombre')
     categorias_list = cursor.fetchall()
     cursor.execute('SELECT DISTINCT nombre_original FROM programas ORDER BY nombre_original')
