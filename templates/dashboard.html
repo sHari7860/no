@@ -5,7 +5,13 @@
 {% block content %}
 <div class="row">
     <div class="col-md-12">
-        <h1 class="mb-4">Dashboard de Matrículas</h1>
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+            <h1 class="mb-0">Dashboard de Matrículas</h1>
+            <div class="d-flex gap-2">
+                <a href="{{ url_for('index') }}" class="btn btn-outline-secondary btn-sm">Cambiar período</a>
+                {% if periodo_actual %}<span class="badge bg-primary align-self-center">Período {{ periodo_actual }}</span>{% endif %}
+            </div>
+        </div>
         
         {% if ultimo_archivo %}
         <div class="alert alert-info">
@@ -45,14 +51,8 @@
     <div class="col-md-3">
         <div class="card text-white bg-info">
             <div class="card-body">
-                <h5 class="card-title">Último Período</h5>
-                <h2 class="card-text">
-                    {% if stats_periodo %}
-                        {{ stats_periodo[0][0] }}
-                    {% else %}
-                        N/A
-                    {% endif %}
-                </h2>
+                <h5 class="card-title">Período Consultado</h5>
+                <h2 class="card-text">{{ periodo_actual or "N/A" }}</h2>
             </div>
         </div>
     </div>
@@ -198,7 +198,7 @@
     };
 
     // Cargar datos de la API
-    fetch('/api/estadisticas')
+    fetch('/api/estadisticas?periodo={{ periodo_actual }}')
         .then(response => response.json())
         .then(data => {
             // Gráfico de categorías

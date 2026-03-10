@@ -146,42 +146,107 @@ def index():
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    cursor.execute('SELECT COUNT(*) FROM estudiantes')
+    cursor.execute('''
+        SELECT
+            p.codigo_periodo,
+            COUNT(m.id) AS total_matriculas,
+            COUNT(DISTINCT CASE WHEN LOWER(e.nombre) = 'confirmado' THEN m.estudiante_id END) AS estudiantes_confirmados
+        FROM periodos p
+        LEFT JOIN matriculas m ON m.periodo_id = p.id
+        LEFT JOIN estados_matricula e ON m.estado_matricula_id = e.id
+        GROUP BY p.codigo_periodo
+        ORDER BY p.codigo_periodo DESC
+    ''')
+    periodos = cursor.fetchall()
+    conn.close()
+
+    return render_template('index.html', periodos=periodos)
+
+
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT codigo_periodo FROM periodos ORDER BY codigo_periodo DESC')
+    periodos_disponibles = [row[0] for row in cursor.fetchall()]
+
+    periodo = request.args.get('periodo', '').strip()
+    if not periodo and periodos_disponibles:
+        periodo = periodos_disponibles[0]
+
+    periodo_id = None
+    if periodo:
+        cursor.execute('SELECT id FROM periodos WHERE codigo_periodo = %s', (periodo,))
+        periodo_row = cursor.fetchone()
+        if periodo_row:
+            periodo_id = periodo_row[0]
+
+    if periodo_id:
+        cursor.execute('''
+            SELECT COUNT(DISTINCT m.estudiante_id)
+            FROM matriculas m
+            WHERE m.periodo_id = %s
+        ''', (periodo_id,))
+    else:
+        cursor.execute('SELECT COUNT(*) FROM estudiantes')
     total_estudiantes = cursor.fetchone()[0]
 
-    cursor.execute('SELECT COUNT(*) FROM matriculas')
+    if periodo_id:
+        cursor.execute('SELECT COUNT(*) FROM matriculas WHERE periodo_id = %s', (periodo_id,))
+    else:
+        cursor.execute('SELECT COUNT(*) FROM matriculas')
     total_matriculas = cursor.fetchone()[0]
 
-    cursor.execute('''
+    query_programas = '''
         SELECT COUNT(DISTINCT p.id)
         FROM programas p
         LEFT JOIN matriculas m ON p.id = m.programa_id
         LEFT JOIN estados_matricula e ON m.estado_matricula_id = e.id
         WHERE LOWER(e.nombre) = 'confirmado'
-    ''')
+    '''
+    params_programas = []
+    if periodo_id:
+        query_programas += ' AND m.periodo_id = %s'
+        params_programas.append(periodo_id)
+    cursor.execute(query_programas, params_programas)
+    
     total_programas = cursor.fetchone()[0]
 
     cursor.execute('SELECT nombre_archivo, fecha_importacion, total_registros FROM archivos_importados ORDER BY fecha_importacion DESC LIMIT 1')
     ultimo_archivo = cursor.fetchone()
 
-    cursor.execute('''
+    query_categoria = '''
         SELECT c.nombre, COUNT(m.id)
         FROM matriculas m
         JOIN categorias c ON m.categoria_id = c.id
-        GROUP BY c.nombre
-    ''')
+    '''
+    params_categoria = []
+    if periodo_id:
+        query_categoria += ' WHERE m.periodo_id = %s'
+        params_categoria.append(periodo_id)
+    query_categoria += ' GROUP BY c.nombre'
+    cursor.execute(query_categoria, params_categoria)
     stats_categoria = cursor.fetchall()
 
-    cursor.execute('''
+    query_top_programas = '''
         SELECT p.nombre_original, COUNT(m.id) AS total
         FROM matriculas m
         JOIN programas p ON m.programa_id = p.id
         JOIN estados_matricula e ON m.estado_matricula_id = e.id
         WHERE LOWER(e.nombre) = 'confirmado'
+    '''
+    params_top_programas = []
+    if periodo_id:
+        query_top_programas += ' AND m.periodo_id = %s'
+        params_top_programas.append(periodo_id)
+    query_top_programas += '''
         GROUP BY p.nombre_original
         ORDER BY total DESC
         LIMIT 10
-    ''')
+    '''
+    cursor.execute(query_top_programas, params_top_programas)
     top_programas = cursor.fetchall()
 
     cursor.execute('''
@@ -199,7 +264,8 @@ def index():
 
     return render_template('dashboard.html', total_estudiantes=total_estudiantes, total_matriculas=total_matriculas,
                            total_programas=total_programas, ultimo_archivo=ultimo_archivo,
-                           stats_categoria=stats_categoria, top_programas=top_programas, stats_periodo=stats_periodo)
+                           stats_categoria=stats_categoria, top_programas=top_programas, stats_periodo=stats_periodo,
+                           periodo_actual=periodo, periodos_disponibles=periodos_disponibles)
 
 
 @app.route('/upload', methods=['GET', 'POST'])
@@ -241,17 +307,47 @@ def upload_file():
 def get_estadisticas():
     conn = get_db_connection()
     cursor = conn.cursor()
+    periodo = request.args.get('periodo', '').strip()
+    periodo_filter = ''
+    params = []
 
-    cursor.execute('SELECT c.nombre, COUNT(m.id) FROM matriculas m JOIN categorias c ON m.categoria_id = c.id JOIN estados_matricula e ON m.estado_matricula_id = e.id WHERE LOWER(e.nombre) = \'confirmado\' GROUP BY c.nombre')
+    if periodo:
+        periodo_filter = ' AND pr.codigo_periodo = %s'
+        params.append(periodo)
+
+    cursor.execute(f'''SELECT c.nombre, COUNT(m.id)
+                       FROM matriculas m
+                       JOIN categorias c ON m.categoria_id = c.id
+                       JOIN estados_matricula e ON m.estado_matricula_id = e.id
+                       JOIN periodos pr ON m.periodo_id = pr.id
+                       WHERE LOWER(e.nombre) = 'confirmado'{periodo_filter}
+                       GROUP BY c.nombre''', params)
     categorias_data = cursor.fetchall()
 
-    cursor.execute('SELECT p.tipo_programa, COUNT(m.id) FROM matriculas m JOIN programas p ON m.programa_id = p.id JOIN estados_matricula e ON m.estado_matricula_id = e.id WHERE LOWER(e.nombre) = \'confirmado\' GROUP BY p.tipo_programa')
+    cursor.execute(f'''SELECT p.tipo_programa, COUNT(m.id)
+                       FROM matriculas m
+                       JOIN programas p ON m.programa_id = p.id
+                       JOIN estados_matricula e ON m.estado_matricula_id = e.id
+                       JOIN periodos pr ON m.periodo_id = pr.id
+                       WHERE LOWER(e.nombre) = 'confirmado'{periodo_filter}
+                       GROUP BY p.tipo_programa''', params)
     tipos_programa_data = cursor.fetchall()
 
-    cursor.execute('SELECT e.nombre, COUNT(m.id) FROM estados_matricula e JOIN matriculas m ON m.estado_matricula_id = e.id GROUP BY e.nombre')
+    cursor.execute(f'''SELECT e.nombre, COUNT(m.id)
+                       FROM estados_matricula e
+                       JOIN matriculas m ON m.estado_matricula_id = e.id
+                       JOIN periodos pr ON m.periodo_id = pr.id
+                       WHERE 1=1{periodo_filter}
+                       GROUP BY e.nombre''', params)
     estados_data = cursor.fetchall()
 
-    cursor.execute('SELECT pr.codigo_periodo, COUNT(DISTINCT m.estudiante_id) FROM matriculas m JOIN periodos pr ON m.periodo_id = pr.id JOIN estados_matricula e ON m.estado_matricula_id = e.id WHERE LOWER(e.nombre) = \'confirmado\' GROUP BY pr.codigo_periodo ORDER BY pr.codigo_periodo')
+    cursor.execute(f'''SELECT pr.codigo_periodo, COUNT(DISTINCT m.estudiante_id)
+                       FROM matriculas m
+                       JOIN periodos pr ON m.periodo_id = pr.id
+                       JOIN estados_matricula e ON m.estado_matricula_id = e.id
+                       WHERE LOWER(e.nombre) = 'confirmado'{periodo_filter}
+                       GROUP BY pr.codigo_periodo
+                       ORDER BY pr.codigo_periodo''', params)
     evolucion_data = cursor.fetchall()
     conn.close()
 

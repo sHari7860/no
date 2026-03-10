@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Seleccionar Período - Matrículas{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <h1 class="mb-1">Selecciona un período</h1>
+            <p class="text-muted mb-0">Elige el período que deseas consultar para cargar su dashboard.</p>
+        </div>
+        {% if periodos %}
+        <a class="btn btn-primary" href="{{ url_for('dashboard', periodo=periodos[0][0]) }}">Ir al período más reciente</a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row g-4">
+    {% for codigo_periodo, total_matriculas, estudiantes_confirmados in periodos %}
+    <div class="col-md-6 col-lg-4">
+        <a class="text-decoration-none" href="{{ url_for('dashboard', periodo=codigo_periodo) }}">
+            <div class="card h-100 shadow-sm period-card">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Período {{ codigo_periodo }}</h5>
+                    <p class="mb-2 text-muted">Matrículas registradas: <strong>{{ total_matriculas }}</strong></p>
+                    <p class="mb-0 text-muted">Estudiantes confirmados: <strong>{{ estudiantes_confirmados }}</strong></p>
+                </div>
+            </div>
+        </a>
+    </div>
+    {% else %}
+    <div class="col-12">
+        <div class="alert alert-warning">
+            No hay períodos disponibles todavía. Importa un archivo para habilitar la consulta por período.
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}
