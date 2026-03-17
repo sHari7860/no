@@ -9,9 +9,7 @@
             <h1 class="mb-1">Selecciona un período</h1>
             <p class="text-muted mb-0">Elige el período que deseas consultar para cargar su dashboard.</p>
         </div>
-        {% if periodos %}
-        <a class="btn btn-primary" href="{{ url_for('dashboard', periodo=periodos[0][0]) }}">Ir al período más reciente</a>
-        {% endif %}
+        
     </div>
 </div>
 
@@ -36,4 +34,74 @@
     </div>
     {% endfor %}
 </div>
+</br>
+<!-- Gráfica de trayectoria -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5>Trayectoria Estudiantes Confirmados</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="trayectoriaChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Plugin para mostrar etiquetas con datos en gráficos
+    const datalabelsPlugin = {
+        id: 'datalabels',
+        afterDatasetsDraw(chart) {
+            const ctx = chart.ctx;
+            chart.data.datasets.forEach((dataset, datasetIndex) => {
+                const meta = chart.getDatasetMeta(datasetIndex);
+                meta.data.forEach((datapoint, index) => {
+                    const value = dataset.data[index];
+                    
+                    if (chart.config.type === 'line') {
+                        const { x, y } = datapoint.getProps(['x', 'y']);
+                        ctx.fillStyle = '#333';
+                        ctx.font = 'bold 12px Arial';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'bottom';
+                        ctx.fillText(value, x, y - 8);
+                    }
+                });
+            });
+        }
+    };
+
+    const periodosData = {{ periodos | tojson }};
+    // Ordenar los datos por código de período ascendente para la gráfica
+    const sortedPeriodos = periodosData.slice().sort((a, b) => a[0].localeCompare(b[0]));
+    const labels = sortedPeriodos.map(p => p[0]);
+    const data = sortedPeriodos.map(p => p[2]); // estudiantes_confirmados
+
+    new Chart(document.getElementById('trayectoriaChart'), {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Estudiantes Confirmados',
+                data: data,
+                borderColor: '#FF6384',
+                fill: false,
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        },
+        plugins: [datalabelsPlugin]
+    });
+</script>
 {% endblock %}

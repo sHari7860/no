@@ -93,16 +93,6 @@
             </div>
         </div>
     </div>
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">
-                <h5>Evolución por Período</h5>
-            </div>
-            <div class="card-body">
-                <canvas id="evolucionChart"></canvas>
-            </div>
-        </div>
-    </div>
 </div>
 
 <!-- Tablas de datos -->
@@ -228,22 +218,28 @@
             
             // Gráfico de tipos de programa
             new Chart(document.getElementById('programaChart'), {
-                type: 'doughnut',
+                type: 'bar',
                 data: {
-                    labels: data.tipos_programa.labels.map((label, i) => `${label} (${data.tipos_programa.data[i]})`),
+                    labels: data.tipos_programa.labels,
                     datasets: [{
+                        label: 'Programas',
                         data: data.tipos_programa.data,
                         backgroundColor: [
-                            '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0'
+                            '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40'
                         ]
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    },
                     plugins: {
                         legend: {
-                            position: 'bottom'
+                            display: false
                         }
                     }
                 },

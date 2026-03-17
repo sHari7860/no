@@ -43,7 +43,7 @@ body {
 }
 
 .navbar a:hover {
-    color: #35cdd8;
+    color: #a913ee;
 }
 
 /* Cards tiernas */
@@ -65,7 +65,7 @@ body {
     left: 0;
     right: 0;
     height: 6px;
-    background: linear-gradient(90deg, #35cdd8, #9adaff, #35cdd8);
+    background: linear-gradient(90deg, #000000, #ffffff, #7083f3);
     background-size: 200% 200%;
     animation: gradientMove 3s ease infinite;
 }
@@ -108,7 +108,7 @@ body {
 .table th {
     padding: 1rem 1.5rem;
     font-weight: 700;
-    color: #35cdd8;
+    color: #02393d;
     font-size: 0.8rem;
     text-transform: uppercase;
     letter-spacing: 1px;
@@ -234,7 +234,7 @@ canvas {
     display: block;
     margin-bottom: 0.7rem;
     font-weight: 600;
-    color: #35cdd8;
+    color: #1f0122;
     font-size: 0.95rem;
     letter-spacing: 0.3px;
 }
@@ -281,7 +281,7 @@ canvas {
 
 .btn:hover {
     transform: translateY(-3px);
-    background: #35cdd8;
+    background: #1737c2;
     color: white;
 }
 
@@ -290,13 +290,13 @@ canvas {
 }
 
 .btn-primary {
-    background: linear-gradient(135deg, #35cdd8, #9adaff);
+    background: linear-gradient(135deg, #1737c2, #2a7be6);
     color: white;
     border: none;
 }
 
 .btn-success {
-    background: linear-gradient(135deg, #b0e9ca, #8fd9b0);
+    background: linear-gradient(135deg, #ba8eec, #ca87f7);
     color: #2d6a4f;
     border: none;
 }
@@ -391,8 +391,8 @@ canvas {
 /* Fondos */
 .bg-white { background: white; }
 .bg-light { background: #f0faff; }
-.bg-primary { background: linear-gradient(135deg, #35cdd8, #9adaff); color: white; }
-.bg-success { background: linear-gradient(135deg, #b0e9ca, #8fd9b0); color: #2d6a4f; }
+.bg-primary { background: linear-gradient(135deg, #ff97d9, #ff97d9); color: rgb(0, 0, 0); }
+.bg-success { background: linear-gradient(135deg, #85501f, #ac5421); color: #2d6a4f; }
 .bg-danger { background: linear-gradient(135deg, #ffb3b3, #ff8a8a); color: white; }
-.bg-warning { background: linear-gradient(135deg, #ffe5b4, #ffd98c); color: #9e7b2a; }
+.bg-warning { background: linear-gradient(135deg, #4e44e7, #6b8ce7); color: #9e7b2a; }
 .bg-soft { background: #e6f7ff; }

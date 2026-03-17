@@ -154,6 +154,7 @@ def index():
         FROM periodos p
         LEFT JOIN matriculas m ON m.periodo_id = p.id
         LEFT JOIN estados_matricula e ON m.estado_matricula_id = e.id
+        WHERE p.codigo_periodo NOT IN ('20260', '20259', '20268', '20263', '20258', '20262')
         GROUP BY p.codigo_periodo
         ORDER BY p.codigo_periodo DESC
     ''')
@@ -485,43 +486,6 @@ def view_data():
                            per_page=per_page)
 
 
-@app.route('/export')
-@login_required
-def export_data():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT e.documento, e.nombre_completo, pr.nombre_original, pr.tipo_programa,
-               per.codigo_periodo, c.nombre, em.nombre, m.fecha_inscripcion,
-               m.liquidacion_numero, e.correo_personal, e.correo_institucional, m.novedad
-        FROM matriculas m
-        JOIN estudiantes e ON m.estudiante_id = e.id
-        JOIN programas pr ON m.programa_id = pr.id
-        JOIN periodos per ON m.periodo_id = per.id
-        JOIN categorias c ON m.categoria_id = c.id
-        JOIN estados_matricula em ON m.estado_matricula_id = em.id
-        ORDER BY per.codigo_periodo DESC, e.nombre_completo
-    ''')
-    datos = cursor.fetchall()
-    conn.close()
-
-    output = BytesIO()
-    headers = ['Documento', 'Nombre', 'Programa', 'Tipo Programa', 'Período', 'Categoría', 'Estado',
-               'Fecha Inscripción', 'Liquidación', 'Correo Personal', 'Correo Institucional', 'Novedad']
-
-    # Build CSV manually to avoid StringIO/send_file encoding issues
-    lines = [','.join(headers)]
-    for row in datos:
-        escaped = []
-        for value in row:
-            text = str(value).replace('"', '""')
-            escaped.append(f'"{text}"')
-        lines.append(','.join(escaped))
-    output.write(('\n'.join(lines)).encode('utf-8'))
-    output.seek(0)
-
-    return send_file(output, mimetype='text/csv', as_attachment=True,
-                     download_name=f'matriculas_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv')
 
 
 @app.route('/logs')
