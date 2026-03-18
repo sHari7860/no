@@ -7,10 +7,15 @@
     <div class="col-md-12">
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h1 class="mb-0">Detalle de Programas - Estudiantes Confirmados</h1>
-            <a href="{{ url_for('index') }}" class="btn btn-secondary">
+            <a href="{{ url_for('dashboard', periodo=periodo_actual) }}" class="btn btn-secondary">
                 <i class="fas fa-arrow-left"></i> Volver al Dashboard
             </a>
         </div>
+        {% if periodo_actual %}
+        <div class="mb-3">
+            <span class="badge bg-primary">Período académico: {{ periodo_actual }}</span>
+        </div>
+        {% endif %}
         <div class="alert alert-info">
             <i class="fas fa-info-circle"></i> Esta página muestra el desglose completo de estudiantes confirmados por programa, 
             indicando cuántos son nuevos y cuántos son antiguos.
@@ -142,23 +147,13 @@
 
 <!-- Gráfico de distribución -->
 <div class="row mt-4">
-    <div class="col-md-6">
+    <div class="col-md-12">
         <div class="card">
             <div class="card-header">
                 <h5>Top 10 Programas por Estudiantes Confirmados</h5>
             </div>
             <div class="card-body">
                 <canvas id="chartTopProgramas"></canvas>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">
-                <h5>Distribución Nuevos vs Antiguos</h5>
-            </div>
-            <div class="card-body">
-                <canvas id="chartDistribucion"></canvas>
             </div>
         </div>
     </div>
@@ -172,13 +167,18 @@
     let todosLosProgramas = [];
     let programasFiltrados = [];
     let chartTopProgramas = null;
-    let chartDistribucion = null;
     let currentPage = 1;
     let itemsPerPage = 10;
+    const periodoActual = "{{ periodo_actual or '' }}";
 
     // Función para cargar todos los programas
     function cargarProgramas() {
-        fetch('/api/programas-detalles')
+        const params = new URLSearchParams();
+        if (periodoActual) params.append('periodo', periodoActual);
+
+        const queryString = params.toString();
+        const url = queryString ? `/api/programas-detalles?${queryString}` : '/api/programas-detalles';
+        fetch(url)
             .then(response => response.json())
             .then(data => {
                 todosLosProgramas = data.programas.filter(p => p.confirmados > 0);
@@ -321,39 +321,6 @@
                             ctx.textAlign = 'center';
                             ctx.textBaseline = 'bottom';
                             ctx.fillText(value, x, y - 5);
-                        } else if (chart.config.type === 'doughnut') {
-                            // Para gráficos circulares, mostrar datos afuera con línea conectora
-                            const { x, y, outerRadius } = datapoint.getProps(['x', 'y', 'outerRadius']);
-                            const angle = (datapoint.startAngle + datapoint.endAngle) / 2;
-                            
-                            // Posicionar 40px fuera del radio
-                            const distance = outerRadius + 40;
-                            const labelX = x + Math.cos(angle - Math.PI / 2) * distance;
-                            const labelY = y + Math.sin(angle - Math.PI / 2) * distance;
-                            
-                            // Dibujar línea conectora
-                            const edgeX = x + Math.cos(angle - Math.PI / 2) * outerRadius;
-                            const edgeY = y + Math.sin(angle - Math.PI / 2) * outerRadius;
-                            
-                            ctx.strokeStyle = '#999';
-                            ctx.lineWidth = 1;
-                            ctx.beginPath();
-                            ctx.moveTo(edgeX, edgeY);
-                            ctx.lineTo(labelX, labelY);
-                            ctx.stroke();
-                            
-                            // Dibujar el número
-                            ctx.fillStyle = '#333';
-                            ctx.font = 'bold 11px Arial';
-                            ctx.textBaseline = 'middle';
-                            
-                            if (labelX > x) {
-                                ctx.textAlign = 'left';
-                                ctx.fillText(value, labelX + 5, labelY);
-                            } else {
-                                ctx.textAlign = 'right';
-                                ctx.fillText(value, labelX - 5, labelY);
-                            }
                         }
                     });
                 });
@@ -392,37 +359,6 @@
             plugins: [datalabelsPlugin]
         });
 
-        // Gráfico de distribución total
-        let totalNuevos = 0;
-        let totalAntiguos = 0;
-        programas.forEach(p => {
-            totalNuevos += p.nuevos;
-            totalAntiguos += p.antiguos;
-        });
-
-        const ctxDist = document.getElementById('chartDistribucion').getContext('2d');
-        if (chartDistribucion) chartDistribucion.destroy();
-        chartDistribucion = new Chart(ctxDist, {
-            type: 'doughnut',
-            data: {
-                labels: [`Nuevos (${totalNuevos})`, `Antiguos (${totalAntiguos})`],
-                datasets: [{
-                    data: [totalNuevos, totalAntiguos],
-                    backgroundColor: ['#17A2B8', '#FFC107'],
-                    borderColor: ['#17A2B8', '#FFC107'],
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: true,
-                plugins: {
-                    legend: {
-                        position: 'bottom'
-                    }
-                }
-            }
-        });
     }
 
     // Función de búsqueda

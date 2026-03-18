@@ -364,7 +364,19 @@ def get_estadisticas():
 @login_required
 def programas_detalles():
     log_action('VIEW_PROGRAMAS_DETALLES', 'Acceso a página de detalles de programas')
-    return render_template('programas_detalles.html')
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT codigo_periodo FROM periodos ORDER BY codigo_periodo DESC')
+    periodos_disponibles = [row[0] for row in cursor.fetchall()]
+    conn.close()
+
+    periodo = request.args.get('periodo', '').strip()
+    if not periodo and periodos_disponibles:
+        periodo = periodos_disponibles[0]
+    elif periodo and periodo not in periodos_disponibles and periodos_disponibles:
+        periodo = periodos_disponibles[0]
+
+    return render_template('programas_detalles.html', periodo_actual=periodo)
 
 
 @app.route('/api/programas-detalles')
@@ -372,10 +384,17 @@ def programas_detalles():
 def get_programas_detalles():
     conn = get_db_connection()
     cursor = conn.cursor()
+    periodo = request.args.get('periodo', '').strip()
+    params = []
+    periodo_filter = ''
+
+    if periodo:
+        periodo_filter = ' AND pr.codigo_periodo = %s'
+        params.append(periodo)
 
     # Obtener todos los programas con detalles (solo confirmados)
     # Nuevos = categoría NUEVO, Antiguos = categoría ANTIGUO + REINTEGRO
-    cursor.execute('''
+    cursor.execute(f'''
         SELECT p.nombre_original, 
                COUNT(CASE WHEN LOWER(e.nombre) = 'confirmado' THEN 1 END) AS confirmados,
                COUNT(CASE WHEN LOWER(e.nombre) = 'confirmado' AND LOWER(c.nombre) = 'nuevo' THEN 1 END) AS nuevos,
@@ -384,10 +403,12 @@ def get_programas_detalles():
         LEFT JOIN matriculas m ON p.id = m.programa_id
         LEFT JOIN categorias c ON m.categoria_id = c.id
         LEFT JOIN estados_matricula e ON m.estado_matricula_id = e.id
+        LEFT JOIN periodos pr ON m.periodo_id = pr.id
         WHERE p.nombre_original IS NOT NULL
+        {periodo_filter}
         GROUP BY p.nombre_original
         ORDER BY confirmados DESC, p.nombre_original
-    ''')
+    ''', params)
     programas_data = cursor.fetchall()
     conn.close()
 
