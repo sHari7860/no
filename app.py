@@ -154,7 +154,7 @@ def index():
         FROM periodos p
         LEFT JOIN matriculas m ON m.periodo_id = p.id
         LEFT JOIN estados_matricula e ON m.estado_matricula_id = e.id
-        WHERE p.codigo_periodo NOT IN ('20260', '20259', '20268', '20263', '20258', '20262')
+        WHERE p.codigo_periodo NOT IN ('20260', '20259', '20268', '20263', '20258')
         GROUP BY p.codigo_periodo
         ORDER BY p.codigo_periodo DESC
     ''')

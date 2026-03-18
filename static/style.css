@@ -65,7 +65,7 @@ body {
     left: 0;
     right: 0;
     height: 6px;
-    background: linear-gradient(90deg, #000000, #ffffff, #7083f3);
+    background: linear-gradient(90deg, #ffffff, #ffffff, #c8ceee);
     background-size: 200% 200%;
     animation: gradientMove 3s ease infinite;
 }
@@ -255,7 +255,7 @@ canvas {
 .form-control:focus,
 .form-select:focus {
     outline: none;
-    border-color: #35cdd8;
+    border-color: #c535d8;
 }
 
 .form-control:hover,
@@ -290,7 +290,7 @@ canvas {
 }
 
 .btn-primary {
-    background: linear-gradient(135deg, #1737c2, #2a7be6);
+    background: linear-gradient(135deg, #29a8a2, #2a7be6);
     color: white;
     border: none;
 }
@@ -391,8 +391,8 @@ canvas {
 /* Fondos */
 .bg-white { background: white; }
 .bg-light { background: #f0faff; }
-.bg-primary { background: linear-gradient(135deg, #ff97d9, #ff97d9); color: rgb(0, 0, 0); }
-.bg-success { background: linear-gradient(135deg, #85501f, #ac5421); color: #2d6a4f; }
-.bg-danger { background: linear-gradient(135deg, #ffb3b3, #ff8a8a); color: white; }
-.bg-warning { background: linear-gradient(135deg, #4e44e7, #6b8ce7); color: #9e7b2a; }
-.bg-soft { background: #e6f7ff; }
+.bg-primary { background: linear-gradient(135deg, #f17ac6, #af4b8a); color: rgb(0, 0, 0); }
+.bg-success { background: linear-gradient(135deg, #f17ac6, #af4b8a); color: #2d6a4f; }
+.bg-danger { background: linear-gradient(135deg, #f17ac6, #af4b8a); color: white; }
+.bg-warning { background: linear-gradient(135deg, #f17ac6, #af4b8a); color: #9e7b2a; }
+.bg-soft { background: #e6f7ff;} 
