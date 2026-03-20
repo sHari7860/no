@@ -99,6 +99,22 @@ def log_action(action, detail=''):
     conn.close()
 
 
+def get_periodos_con_datos(cursor):
+    """Retorna períodos con datos, usando la misma lógica de la página de inicio."""
+    cursor.execute(
+        '''
+        SELECT p.codigo_periodo
+        FROM periodos p
+        LEFT JOIN matriculas m ON m.periodo_id = p.id
+        WHERE p.codigo_periodo NOT IN ('20260', '20259', '20268', '20263', '20258', '20262')
+        GROUP BY p.codigo_periodo
+        HAVING COUNT(m.id) > 0
+        ORDER BY p.codigo_periodo DESC
+        '''
+    )
+    return [row[0] for row in cursor.fetchall()]
+
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -429,7 +445,15 @@ def get_programas_detalles():
 @login_required
 def view_data():
     conn = get_db_connection()
-    periodo = request.args.get('periodo', '')
+    cursor = conn.cursor()
+    periodos_disponibles = get_periodos_con_datos(cursor)
+
+    periodo = request.args.get('periodo', '').strip()
+    if not periodo and periodos_disponibles:
+        periodo = periodos_disponibles[0]
+    elif periodo and periodo not in periodos_disponibles and periodos_disponibles:
+        periodo = periodos_disponibles[0]
+
     programa = request.args.get('programa', '')
     categoria = request.args.get('categoria', '')
     # Estado filter: if parameter is missing, default to 'confirmado'
@@ -478,7 +502,6 @@ def view_data():
 
     query += ' ORDER BY m.fecha_inscripcion DESC'
 
-    cursor = conn.cursor()
     cursor.execute(f'SELECT COUNT(*) FROM ({query}) AS conteo', params)
     total = cursor.fetchone()[0]
 
@@ -487,8 +510,7 @@ def view_data():
     cursor.execute(query, params)
     datos = cursor.fetchall()
 
-    cursor.execute('SELECT DISTINCT codigo_periodo FROM periodos ORDER BY codigo_periodo DESC')
-    periodos = cursor.fetchall()
+    periodos = [(codigo,) for codigo in periodos_disponibles]
     cursor.execute('SELECT DISTINCT nombre FROM categorias ORDER BY nombre')
     categorias_list = cursor.fetchall()
     cursor.execute('SELECT DISTINCT nombre_original FROM programas ORDER BY nombre_original')

@@ -62,12 +62,28 @@ def process_telefono(telefono_str):
     return principal, adicional
 
 
+def es_semestre_cancelado(novedad):
+    """Detecta observaciones de semestre cancelado (con o sin tildes)."""
+    texto = normalize_text(novedad)
+    return 'semestre cancelado' in texto
+
+
 def import_excel_to_db(filepath, filename, actor=None):
     """Importa un archivo Excel a PostgreSQL."""
     conn = get_db_connection()
     cursor = conn.cursor()
 
     periodo_codigo = extract_period_from_filename(filename)
+
+    # Reimportación controlada del período 20261:
+    # borrar previamente su información para cargar datos limpios.
+    if periodo_codigo == '20261':
+        cursor.execute('SELECT id FROM periodos WHERE codigo_periodo = %s', (periodo_codigo,))
+        periodo_20261 = cursor.fetchone()
+        if periodo_20261:
+            periodo_20261_id = periodo_20261[0]
+            cursor.execute('DELETE FROM matriculas WHERE periodo_id = %s', (periodo_20261_id,))
+            cursor.execute('DELETE FROM archivos_importados WHERE periodo_id = %s', (periodo_20261_id,))
 
     cursor.execute('SELECT id FROM archivos_importados WHERE nombre_archivo = %s', (filename,))
     if cursor.fetchone():
@@ -170,6 +186,8 @@ def import_excel_to_db(filepath, filename, actor=None):
         categoria_id = categoria_result[0] if categoria_result else 2
 
         estado_nombre = str(row.get('estado_matricula', 'Por confirmar')).strip()
+        if normalize_text(estado_nombre) == 'confirmado' and es_semestre_cancelado(row.get('novedad', '')):
+            estado_nombre = 'Cancelado'
         cursor.execute('SELECT id FROM estados_matricula WHERE nombre = %s', (estado_nombre,))
         estado_result = cursor.fetchone()
         estado_matricula_id = estado_result[0] if estado_result else 2
