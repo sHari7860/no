@@ -429,7 +429,7 @@ def get_programas_detalles():
 @login_required
 def view_data():
     conn = get_db_connection()
-    periodo = request.args.get('periodo', '')
+    periodo = request.args.get('periodo', '').strip()
     programa = request.args.get('programa', '')
     categoria = request.args.get('categoria', '')
     # Estado filter: if parameter is missing, default to 'confirmado'
@@ -449,6 +449,24 @@ def view_data():
         per_page = 10
     # cap per_page to a reasonable maximum (e.g. 1000) to avoid abuse
     per_page = max(1, min(per_page, 1000))
+
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT per.codigo_periodo
+        FROM periodos per
+        JOIN matriculas m ON m.periodo_id = per.id
+        WHERE per.codigo_periodo NOT IN ('20260', '20259', '20268', '20263', '20258', '20262')
+        GROUP BY per.codigo_periodo
+        HAVING COUNT(m.id) > 0
+        ORDER BY per.codigo_periodo DESC
+    ''')
+    periodos = cursor.fetchall()
+    codigos_periodo = [p[0] for p in periodos]
+
+    if not periodo and codigos_periodo:
+        periodo = codigos_periodo[0]
+    elif periodo and periodo not in codigos_periodo:
+        periodo = codigos_periodo[0] if codigos_periodo else ''
 
     query = '''
         SELECT e.documento, e.nombre_completo, pr.nombre_original, pr.tipo_programa,
@@ -478,7 +496,6 @@ def view_data():
 
     query += ' ORDER BY m.fecha_inscripcion DESC'
 
-    cursor = conn.cursor()
     cursor.execute(f'SELECT COUNT(*) FROM ({query}) AS conteo', params)
     total = cursor.fetchone()[0]
 
@@ -487,8 +504,6 @@ def view_data():
     cursor.execute(query, params)
     datos = cursor.fetchall()
 
-    cursor.execute('SELECT DISTINCT codigo_periodo FROM periodos ORDER BY codigo_periodo DESC')
-    periodos = cursor.fetchall()
     cursor.execute('SELECT DISTINCT nombre FROM categorias ORDER BY nombre')
     categorias_list = cursor.fetchall()
     cursor.execute('SELECT DISTINCT nombre_original FROM programas ORDER BY nombre_original')
