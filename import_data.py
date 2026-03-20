@@ -92,6 +92,10 @@ def import_excel_to_db(filepath, filename, actor=None):
     cursor.execute('SELECT id FROM periodos WHERE codigo_periodo = %s', (periodo_codigo,))
     periodo_id = cursor.fetchone()[0]
 
+    if periodo_codigo == '20261':
+        cursor.execute('DELETE FROM matriculas WHERE periodo_id = %s', (periodo_id,))
+        cursor.execute('DELETE FROM archivos_importados WHERE periodo_id = %s', (periodo_id,))
+
     nuevos_estudiantes = 0
     nuevas_matriculas = 0
     programas_nuevos = 0
@@ -170,6 +174,10 @@ def import_excel_to_db(filepath, filename, actor=None):
         categoria_id = categoria_result[0] if categoria_result else 2
 
         estado_nombre = str(row.get('estado_matricula', 'Por confirmar')).strip()
+        novedad_valor = str(row.get('novedad', '')).strip()
+        novedad_normalizada = normalize_text(novedad_valor)
+        if 'semestre cancelado' in novedad_normalizada:
+            estado_nombre = 'Cancelado'
         cursor.execute('SELECT id FROM estados_matricula WHERE nombre = %s', (estado_nombre,))
         estado_result = cursor.fetchone()
         estado_matricula_id = estado_result[0] if estado_result else 2
@@ -190,7 +198,7 @@ def import_excel_to_db(filepath, filename, actor=None):
                 categoria_id,
                 estado_matricula_id,
                 str(row.get('fecha_inscripcion', '')).strip(),
-                str(row.get('novedad', '')).strip(),
+                novedad_valor,
                 filename,
             ),
         )
