@@ -70,13 +70,10 @@ def extraer_periodo(nombre_archivo):
     """Extrae el periodo del nombre del archivo Excel"""
     # Buscar los ÚLTIMOS 5 dígitos antes de .xlsx
     match = re.search(r'(\d{5})\.xlsx$', nombre_archivo)
-    
+
     if match:
-        ultimos_5 = match.group(1)  # '20261'
-        año = ultimos_5[:4]  # '2026'
-        semestre = ultimos_5[4]  # '1'
-        return f"{año}-{semestre}"
-    return "2026-1"
+        return match.group(1)  # '20261'
+    return "20261"
 
 def procesar_excel_completo(filepath, filename):
     """Procesa un archivo Excel completo"""
@@ -118,11 +115,21 @@ def procesar_excel_completo(filepath, filename):
         periodo = extraer_periodo(filename)
         with engine.begin() as conn:
             conn.execute(
-                text("INSERT INTO periodos (periodo) VALUES (:p) ON CONFLICT DO NOTHING"),
+                text("INSERT INTO periodos (codigo_periodo) VALUES (:p) ON CONFLICT DO NOTHING"),
                 {"p": periodo}
             )
+
+            # Eliminar matrícula previa de este periodo para volver a insertar
+            periodo_row = conn.execute(text("SELECT id FROM periodos WHERE codigo_periodo = :p"), {"p": periodo}).fetchone()
+            if periodo_row:
+                periodo_id = periodo_row[0]
+                deleted = conn.execute(text("DELETE FROM matriculas WHERE periodo_id = :pid"), {"pid": periodo_id}).rowcount
+                resultados.append(("Matrículas", True, f"{deleted} filas eliminadas de periodo {periodo} (reemplazo)"))
+            else:
+                periodo_id = None
+
         resultados.append(("Periodo", True, f"{periodo} cargado"))
-        
+
         # 2. Cargar estudiantes (AHORA CON DATOS LIMPIOS)
         estudiantes_df = df[[
             "documento", "nombre_estudiante", "correo_personal",
@@ -170,7 +177,7 @@ def procesar_excel_completo(filepath, filename):
         with engine.connect() as conn:
             estudiantes_db = pd.read_sql("SELECT id, documento FROM estudiantes_base", conn)
             programas_db = pd.read_sql("SELECT id, programa FROM programas", conn)
-            periodos_db = pd.read_sql(f"SELECT id FROM periodos WHERE periodo = '{periodo}'", conn)
+            periodos_db = pd.read_sql(f"SELECT id FROM periodos WHERE codigo_periodo = '{periodo}'", conn)
             
             if len(periodos_db) == 0:
                 resultados.append(("Matrículas", False, f"Periodo {periodo} no encontrado"))
@@ -180,7 +187,14 @@ def procesar_excel_completo(filepath, filename):
         
         # Preparar datos de matrículas
         matriculas_df = df.dropna(subset=["documento", "programa", "estado"]).copy()
-        
+
+        # Validación: si la columna extra contiene 'semestre cancelado', marcar estado como Cancelado
+        matriculas_df['extra'] = matriculas_df.get('extra', '').fillna('').astype(str)
+        cancelado_mask = matriculas_df['extra'].str.contains('semestre cancelado', case=False, na=False)
+        if cancelado_mask.any():
+            matriculas_df.loc[cancelado_mask, 'estado'] = 'Cancelado'
+            resultados.append(("Validación", True, f"{cancelado_mask.sum()} filas marcadas como 'Cancelado' por 'semestre cancelado'"))
+
         estudiantes_db['documento'] = estudiantes_db['documento'].astype(str)
         
         # Merge para obtener IDs

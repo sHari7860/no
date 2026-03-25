@@ -34,7 +34,7 @@ body {
 }
 
 .navbar a {
-    color: #5c6b7e;
+    color: #ed2dff;
     text-decoration: none;
     font-weight: 600;
     padding: 0.5rem 0;
@@ -190,7 +190,7 @@ canvas {
 
 .chart-bar {
     flex: 1;
-    background: linear-gradient(180deg, #35cdd8, #9adaff);
+    background: linear-gradient(180deg, #bf95e2, #9adaff);
     border-radius: 20px 20px 8px 8px;
     animation: growBar 1s ease-out forwards;
     transform-origin: bottom;
@@ -260,7 +260,7 @@ canvas {
 
 .form-control:hover,
 .form-select:hover {
-    border-color: #35cdd8;
+    border-color: #a973f0;
 }
 
 /* Botones sin efectos de opacidad */
@@ -281,7 +281,7 @@ canvas {
 
 .btn:hover {
     transform: translateY(-3px);
-    background: #1737c2;
+    background: #9217c2;
     color: white;
 }
 
@@ -290,7 +290,7 @@ canvas {
 }
 
 .btn-primary {
-    background: linear-gradient(135deg, #29a8a2, #2a7be6);
+    background: linear-gradient(135deg, #d48bdd, #e97fb9);
     color: white;
     border: none;
 }
@@ -361,7 +361,7 @@ canvas {
 .text-right { text-align: right; }
 
 .text-muted { color: #a5b3c2; }
-.text-primary { color: #35cdd8; }
+.text-primary { color: #ee9ae7; }
 .text-success { color: #6fbf8f; }
 .text-danger { color: #ff8a8a; }
 

@@ -14,7 +14,7 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'clave-secreta-para-flask')
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
-# Session lifetime (e.g., 30 minutes)
+# Configurar duración de la sesión a 30 minutos
 app.permanent_session_lifetime = timedelta(minutes=30)
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -57,13 +57,13 @@ def role_required(*allowed_roles):
 
 @app.before_request
 def require_login():
-    # Allow access to login and static assets without authentication
+    # Permitir acceso a rutas de login y recursos estáticos sin autenticación
     exempt_endpoints = {'login', 'static'}
     endpoint = request.endpoint
     if endpoint in exempt_endpoints or endpoint is None:
         return
 
-    # If user has a session token, validate expiration
+    # Verificar si el usuario está autenticado
     user_id = session.get('user_id')
     if not user_id:
         return redirect(url_for('login'))
@@ -84,7 +84,7 @@ def require_login():
         flash('Tu sesión ha expirado. Por favor inicia sesión de nuevo.', 'warning')
         return redirect(url_for('login'))
 
-    # Refresh sliding expiration on activity
+    # Si la sesion es valida y el usuario esta activo, renovar el tiempo de expiracion
     session['auth_expires'] = (datetime.utcnow() + app.permanent_session_lifetime).timestamp()
 
 
@@ -123,7 +123,7 @@ def login():
         session['username'] = user[1]
         session['nombre_completo'] = user[3]
         session['rol'] = user[4]
-        # Create a token and expiration timestamp
+        # Generar un token de sesión único para mayor seguridad
         session['auth_token'] = secrets.token_urlsafe(32)
         session['auth_expires'] = (datetime.utcnow() + app.permanent_session_lifetime).timestamp()
         log_action('LOGIN', 'Inicio de sesión')
@@ -150,7 +150,9 @@ def index():
         SELECT
             p.codigo_periodo,
             COUNT(m.id) AS total_matriculas,
-            COUNT(DISTINCT CASE WHEN LOWER(e.nombre) = 'confirmado' THEN m.estudiante_id END) AS estudiantes_confirmados
+            COUNT(DISTINCT CASE WHEN LOWER(e.nombre) = 'confirmado' THEN m.estudiante_id END) AS estudiantes_confirmados,
+            COUNT(DISTINCT CASE WHEN LOWER(e.nombre) = 'cancelado' THEN m.estudiante_id END) AS estudiantes_cancelados,
+            COUNT(DISTINCT CASE WHEN LOWER(e.nombre) = 'por confirmar' THEN m.estudiante_id END) AS estudiantes_por_confirmar
         FROM periodos p
         LEFT JOIN matriculas m ON m.periodo_id = p.id
         LEFT JOIN estados_matricula e ON m.estado_matricula_id = e.id
@@ -363,6 +365,7 @@ def get_estadisticas():
 @app.route('/programas-detalles')
 @login_required
 def programas_detalles():
+    # Mensaje de log para acceso a la página de detalles de programas
     log_action('VIEW_PROGRAMAS_DETALLES', 'Acceso a página de detalles de programas')
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -432,8 +435,7 @@ def view_data():
     periodo = request.args.get('periodo', '')
     programa = request.args.get('programa', '')
     categoria = request.args.get('categoria', '')
-    # Estado filter: if parameter is missing, default to 'confirmado'
-    # If parameter is present but empty string, treat as 'Todos' (no filter)
+    # Permitir filtrar por estado de matrícula, predeterminado "confirmado"
     estado_param = request.args.get('estado', None)
     if estado_param is None:
         estado_filter = 'confirmado'
@@ -442,12 +444,12 @@ def view_data():
         estado_actual = estado_param
         estado_filter = estado_param if estado_param != '' else None
     page = int(request.args.get('page', 1))
-    # allow client to request number of rows per page, default 10
+    # Limitar el numero de registros por pagina
     try:
         per_page = int(request.args.get('per_page', 10))
     except ValueError:
         per_page = 10
-    # cap per_page to a reasonable maximum (e.g. 1000) to avoid abuse
+    # Maximo 1000 registros por pagina 
     per_page = max(1, min(per_page, 1000))
 
     query = '''
@@ -487,7 +489,12 @@ def view_data():
     cursor.execute(query, params)
     datos = cursor.fetchall()
 
-    cursor.execute('SELECT DISTINCT codigo_periodo FROM periodos ORDER BY codigo_periodo DESC')
+    cursor.execute('''
+        SELECT DISTINCT per.codigo_periodo
+        FROM periodos per
+        INNER JOIN matriculas m ON m.periodo_id = per.id
+        ORDER BY per.codigo_periodo DESC
+    ''')
     periodos = cursor.fetchall()
     cursor.execute('SELECT DISTINCT nombre FROM categorias ORDER BY nombre')
     categorias_list = cursor.fetchall()
@@ -499,7 +506,7 @@ def view_data():
     conn.close()
     total_pages = (total + per_page - 1) // per_page
 
-    # pass total and current per_page so client can enforce maximum
+    # Mensaje de log para acceso a la página de datos con filtros aplicados
     return render_template('data.html', datos=datos, periodos=periodos, categorias=categorias_list,
                            programas=programas_list, periodo_actual=periodo, categoria_actual=categoria,
                            programa_actual=programa, page=page, total_pages=total_pages, total=total,
