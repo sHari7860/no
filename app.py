@@ -16,6 +16,7 @@ app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 # Configurar duración de la sesión a 30 minutos
 app.permanent_session_lifetime = timedelta(minutes=30)
+PERIODO_EXCLUIDO = '20261'
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 ALLOWED_EXTENSIONS = {'xlsx', 'xls'}
@@ -99,6 +100,13 @@ def log_action(action, detail=''):
     conn.close()
 
 
+def get_estado_display_sql(alias_estado='em', alias_matricula='m'):
+    return f"""CASE
+        WHEN LOWER(COALESCE({alias_matricula}.novedad, '')) LIKE '%semestre cancelado%' THEN 'Cancelado'
+        ELSE {alias_estado}.nombre
+    END"""
+
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -156,10 +164,10 @@ def index():
         FROM periodos p
         LEFT JOIN matriculas m ON m.periodo_id = p.id
         LEFT JOIN estados_matricula e ON m.estado_matricula_id = e.id
-        WHERE p.codigo_periodo NOT IN ('20260', '20259', '20268', '20263', '20258', '20262')
+        WHERE p.codigo_periodo NOT IN ('20260', '20259', '20268', '20263', '20258', '20262', %s)
         GROUP BY p.codigo_periodo
         ORDER BY p.codigo_periodo DESC
-    ''')
+    ''', (PERIODO_EXCLUIDO,))
     periodos = cursor.fetchall()
     conn.close()
 
@@ -172,7 +180,7 @@ def dashboard():
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    cursor.execute('SELECT codigo_periodo FROM periodos ORDER BY codigo_periodo DESC')
+    cursor.execute('SELECT codigo_periodo FROM periodos WHERE codigo_periodo <> %s ORDER BY codigo_periodo DESC', (PERIODO_EXCLUIDO,))
     periodos_disponibles = [row[0] for row in cursor.fetchall()]
 
     periodo = request.args.get('periodo', '').strip()
@@ -193,13 +201,23 @@ def dashboard():
             WHERE m.periodo_id = %s
         ''', (periodo_id,))
     else:
-        cursor.execute('SELECT COUNT(*) FROM estudiantes')
+        cursor.execute('''
+            SELECT COUNT(DISTINCT m.estudiante_id)
+            FROM matriculas m
+            JOIN periodos p ON p.id = m.periodo_id
+            WHERE p.codigo_periodo <> %s
+        ''', (PERIODO_EXCLUIDO,))
     total_estudiantes = cursor.fetchone()[0]
 
     if periodo_id:
         cursor.execute('SELECT COUNT(*) FROM matriculas WHERE periodo_id = %s', (periodo_id,))
     else:
-        cursor.execute('SELECT COUNT(*) FROM matriculas')
+        cursor.execute('''
+            SELECT COUNT(*)
+            FROM matriculas m
+            JOIN periodos p ON p.id = m.periodo_id
+            WHERE p.codigo_periodo <> %s
+        ''', (PERIODO_EXCLUIDO,))
     total_matriculas = cursor.fetchone()[0]
 
     query_programas = '''
@@ -207,9 +225,10 @@ def dashboard():
         FROM programas p
         LEFT JOIN matriculas m ON p.id = m.programa_id
         LEFT JOIN estados_matricula e ON m.estado_matricula_id = e.id
-        WHERE LOWER(e.nombre) = 'confirmado'
+        LEFT JOIN periodos pr ON m.periodo_id = pr.id
+        WHERE LOWER(e.nombre) = 'confirmado' AND pr.codigo_periodo <> %s
     '''
-    params_programas = []
+    params_programas = [PERIODO_EXCLUIDO]
     if periodo_id:
         query_programas += ' AND m.periodo_id = %s'
         params_programas.append(periodo_id)
@@ -225,9 +244,10 @@ def dashboard():
         FROM matriculas m
         JOIN categorias c ON m.categoria_id = c.id
     '''
-    params_categoria = []
+    params_categoria = [PERIODO_EXCLUIDO]
+    query_categoria += ' WHERE EXISTS (SELECT 1 FROM periodos p WHERE p.id = m.periodo_id AND p.codigo_periodo <> %s)'
     if periodo_id:
-        query_categoria += ' WHERE m.periodo_id = %s'
+        query_categoria += ' AND m.periodo_id = %s'
         params_categoria.append(periodo_id)
     query_categoria += ' GROUP BY c.nombre'
     cursor.execute(query_categoria, params_categoria)
@@ -238,9 +258,10 @@ def dashboard():
         FROM matriculas m
         JOIN programas p ON m.programa_id = p.id
         JOIN estados_matricula e ON m.estado_matricula_id = e.id
-        WHERE LOWER(e.nombre) = 'confirmado'
+        JOIN periodos pr ON m.periodo_id = pr.id
+        WHERE LOWER(e.nombre) = 'confirmado' AND pr.codigo_periodo <> %s
     '''
-    params_top_programas = []
+    params_top_programas = [PERIODO_EXCLUIDO]
     if periodo_id:
         query_top_programas += ' AND m.periodo_id = %s'
         params_top_programas.append(periodo_id)
@@ -257,10 +278,10 @@ def dashboard():
         FROM matriculas m
         JOIN periodos pr ON m.periodo_id = pr.id
         JOIN estados_matricula e ON m.estado_matricula_id = e.id
-        WHERE LOWER(e.nombre) = 'confirmado'
+        WHERE LOWER(e.nombre) = 'confirmado' AND pr.codigo_periodo <> %s
         GROUP BY pr.codigo_periodo
         ORDER BY pr.codigo_periodo DESC
-    ''')
+    ''', (PERIODO_EXCLUIDO,))
     stats_periodo = cursor.fetchall()
 
     conn.close()
@@ -312,7 +333,8 @@ def get_estadisticas():
     cursor = conn.cursor()
     periodo = request.args.get('periodo', '').strip()
     periodo_filter = ''
-    params = []
+    params = [PERIODO_EXCLUIDO]
+    estado_display = get_estado_display_sql(alias_estado='e', alias_matricula='m')
 
     if periodo:
         periodo_filter = ' AND pr.codigo_periodo = %s'
@@ -323,7 +345,7 @@ def get_estadisticas():
                        JOIN categorias c ON m.categoria_id = c.id
                        JOIN estados_matricula e ON m.estado_matricula_id = e.id
                        JOIN periodos pr ON m.periodo_id = pr.id
-                       WHERE LOWER(e.nombre) = 'confirmado'{periodo_filter}
+                       WHERE pr.codigo_periodo <> %s AND LOWER({estado_display}) = 'confirmado'{periodo_filter}
                        GROUP BY c.nombre''', params)
     categorias_data = cursor.fetchall()
 
@@ -332,7 +354,7 @@ def get_estadisticas():
                        JOIN programas p ON m.programa_id = p.id
                        JOIN estados_matricula e ON m.estado_matricula_id = e.id
                        JOIN periodos pr ON m.periodo_id = pr.id
-                       WHERE LOWER(e.nombre) = 'confirmado'{periodo_filter}
+                       WHERE pr.codigo_periodo <> %s AND LOWER({estado_display}) = 'confirmado'{periodo_filter}
                        GROUP BY p.tipo_programa''', params)
     tipos_programa_data = cursor.fetchall()
 
@@ -340,7 +362,7 @@ def get_estadisticas():
                        FROM estados_matricula e
                        JOIN matriculas m ON m.estado_matricula_id = e.id
                        JOIN periodos pr ON m.periodo_id = pr.id
-                       WHERE 1=1{periodo_filter}
+                       WHERE pr.codigo_periodo <> %s{periodo_filter}
                        GROUP BY e.nombre''', params)
     estados_data = cursor.fetchall()
 
@@ -348,7 +370,7 @@ def get_estadisticas():
                        FROM matriculas m
                        JOIN periodos pr ON m.periodo_id = pr.id
                        JOIN estados_matricula e ON m.estado_matricula_id = e.id
-                       WHERE LOWER(e.nombre) = 'confirmado'{periodo_filter}
+                       WHERE pr.codigo_periodo <> %s AND LOWER({estado_display}) = 'confirmado'{periodo_filter}
                        GROUP BY pr.codigo_periodo
                        ORDER BY pr.codigo_periodo''', params)
     evolucion_data = cursor.fetchall()
@@ -369,7 +391,7 @@ def programas_detalles():
     log_action('VIEW_PROGRAMAS_DETALLES', 'Acceso a página de detalles de programas')
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT codigo_periodo FROM periodos ORDER BY codigo_periodo DESC')
+    cursor.execute('SELECT codigo_periodo FROM periodos WHERE codigo_periodo <> %s ORDER BY codigo_periodo DESC', (PERIODO_EXCLUIDO,))
     periodos_disponibles = [row[0] for row in cursor.fetchall()]
     conn.close()
 
@@ -388,20 +410,21 @@ def get_programas_detalles():
     conn = get_db_connection()
     cursor = conn.cursor()
     periodo = request.args.get('periodo', '').strip()
-    params = []
-    periodo_filter = ''
+    params = [PERIODO_EXCLUIDO]
+    periodo_filter = ' AND (pr.codigo_periodo <> %s OR pr.codigo_periodo IS NULL)'
 
     if periodo:
-        periodo_filter = ' AND pr.codigo_periodo = %s'
+        periodo_filter += ' AND pr.codigo_periodo = %s'
         params.append(periodo)
 
     # Obtener todos los programas con detalles (solo confirmados)
     # Nuevos = categoría NUEVO, Antiguos = categoría ANTIGUO + REINTEGRO
+    estado_display = get_estado_display_sql(alias_estado='e', alias_matricula='m')
     cursor.execute(f'''
         SELECT p.nombre_original, 
-               COUNT(CASE WHEN LOWER(e.nombre) = 'confirmado' THEN 1 END) AS confirmados,
-               COUNT(CASE WHEN LOWER(e.nombre) = 'confirmado' AND LOWER(c.nombre) = 'nuevo' THEN 1 END) AS nuevos,
-               COUNT(CASE WHEN LOWER(e.nombre) = 'confirmado' AND LOWER(c.nombre) IN ('antiguo', 'reintegro') THEN 1 END) AS antiguos
+               COUNT(CASE WHEN LOWER({estado_display}) = 'confirmado' THEN 1 END) AS confirmados,
+               COUNT(CASE WHEN LOWER({estado_display}) = 'confirmado' AND LOWER(c.nombre) = 'nuevo' THEN 1 END) AS nuevos,
+               COUNT(CASE WHEN LOWER({estado_display}) = 'confirmado' AND LOWER(c.nombre) IN ('antiguo', 'reintegro') THEN 1 END) AS antiguos
         FROM programas p
         LEFT JOIN matriculas m ON p.id = m.programa_id
         LEFT JOIN categorias c ON m.categoria_id = c.id
@@ -415,17 +438,49 @@ def get_programas_detalles():
     programas_data = cursor.fetchall()
     conn.close()
 
-    return jsonify({
-        'programas': [
+    programas = []
+    for row in programas_data:
+        confirmados = row[1] or 0
+        nuevos = row[2] or 0
+        antiguos = row[3] or 0
+        # Validación para asegurar consistencia entre columnas.
+        if nuevos + antiguos != confirmados:
+            antiguos = max(0, confirmados - nuevos)
+        programas.append(
             {
-                'nombre': r[0],
-                'confirmados': r[1] or 0,
-                'nuevos': r[2] or 0,
-                'antiguos': r[3] or 0
+                'nombre': row[0],
+                'confirmados': confirmados,
+                'nuevos': nuevos,
+                'antiguos': antiguos,
             }
-            for r in programas_data
-        ]
-    })
+        )
+
+    return jsonify({'programas': programas})
+
+
+@app.route('/api/programas-por-periodo')
+@login_required
+def get_programas_por_periodo():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    periodo = request.args.get('periodo', '').strip()
+    params = [PERIODO_EXCLUIDO]
+    query = '''
+        SELECT DISTINCT pr.nombre_original
+        FROM programas pr
+        JOIN matriculas m ON m.programa_id = pr.id
+        JOIN periodos pe ON pe.id = m.periodo_id
+        WHERE pe.codigo_periodo <> %s
+    '''
+    if periodo:
+        query += ' AND pe.codigo_periodo = %s'
+        params.append(periodo)
+
+    query += ' ORDER BY pr.nombre_original'
+    cursor.execute(query, params)
+    programas = [row[0] for row in cursor.fetchall()]
+    conn.close()
+    return jsonify({'programas': programas})
 
 
 @app.route('/data')
@@ -445,16 +500,23 @@ def view_data():
         estado_filter = estado_param if estado_param != '' else None
     page = int(request.args.get('page', 1))
     # Limitar el numero de registros por pagina
+    per_page_raw = request.args.get('per_page', 10)
     try:
-        per_page = int(request.args.get('per_page', 10))
+        per_page = int(per_page_raw)
     except ValueError:
         per_page = 10
+    if per_page <= 0:
+        flash('Filas por página debe ser mayor que 0. Se ajustó a 1.', 'warning')
     # Maximo 1000 registros por pagina 
     per_page = max(1, min(per_page, 1000))
 
+    estado_display = get_estado_display_sql(alias_estado='em', alias_matricula='m')
+
     query = '''
         SELECT e.documento, e.nombre_completo, pr.nombre_original, pr.tipo_programa,
-               per.codigo_periodo, c.nombre, em.nombre, m.fecha_inscripcion,
+               per.codigo_periodo, c.nombre,
+               {estado_display} AS estado_mostrado,
+               m.fecha_inscripcion,
                m.liquidacion_numero, m.novedad
         FROM matriculas m
         JOIN estudiantes e ON m.estudiante_id = e.id
@@ -463,8 +525,10 @@ def view_data():
         JOIN categorias c ON m.categoria_id = c.id
         JOIN estados_matricula em ON m.estado_matricula_id = em.id
         WHERE 1=1
-    '''
+    '''.format(estado_display=estado_display)
     params = []
+    query += ' AND per.codigo_periodo <> %s'
+    params.append(PERIODO_EXCLUIDO)
     if periodo:
         query += ' AND per.codigo_periodo = %s'
         params.append(periodo)
@@ -475,7 +539,7 @@ def view_data():
         query += ' AND c.nombre = %s'
         params.append(categoria)
     if estado_filter:
-        query += ' AND LOWER(em.nombre) = %s'
+        query += f' AND LOWER({estado_display}) = %s'
         params.append(estado_filter.lower())
 
     query += ' ORDER BY m.fecha_inscripcion DESC'
@@ -493,15 +557,60 @@ def view_data():
         SELECT DISTINCT per.codigo_periodo
         FROM periodos per
         INNER JOIN matriculas m ON m.periodo_id = per.id
+        WHERE per.codigo_periodo <> %s
         ORDER BY per.codigo_periodo DESC
-    ''')
+    ''', (PERIODO_EXCLUIDO,))
     periodos = cursor.fetchall()
     cursor.execute('SELECT DISTINCT nombre FROM categorias ORDER BY nombre')
     categorias_list = cursor.fetchall()
-    cursor.execute('SELECT DISTINCT nombre_original FROM programas ORDER BY nombre_original')
+    params_programas = [PERIODO_EXCLUIDO]
+    query_programas = '''
+        SELECT DISTINCT pr.nombre_original
+        FROM programas pr
+        JOIN matriculas m ON m.programa_id = pr.id
+        JOIN periodos per ON per.id = m.periodo_id
+        WHERE per.codigo_periodo <> %s
+    '''
+    if periodo:
+        query_programas += ' AND per.codigo_periodo = %s'
+        params_programas.append(periodo)
+    query_programas += ' ORDER BY pr.nombre_original'
+    cursor.execute(query_programas, params_programas)
     programas_list = cursor.fetchall()
+    if programa and programa not in [p[0] for p in programas_list]:
+        programa = ''
     cursor.execute('SELECT DISTINCT nombre FROM estados_matricula ORDER BY nombre')
     estados_list = cursor.fetchall()
+
+    query_chart = '''
+        SELECT pr.nombre_original, COUNT(*) AS total
+        FROM matriculas m
+        JOIN programas pr ON m.programa_id = pr.id
+        JOIN periodos per ON m.periodo_id = per.id
+        JOIN categorias c ON m.categoria_id = c.id
+        JOIN estados_matricula em ON m.estado_matricula_id = em.id
+        WHERE per.codigo_periodo <> %s
+    '''
+    chart_params = [PERIODO_EXCLUIDO]
+    if periodo:
+        query_chart += ' AND per.codigo_periodo = %s'
+        chart_params.append(periodo)
+    if programa:
+        query_chart += ' AND pr.nombre_original = %s'
+        chart_params.append(programa)
+    if categoria:
+        query_chart += ' AND c.nombre = %s'
+        chart_params.append(categoria)
+    if estado_filter:
+        query_chart += f' AND LOWER({estado_display}) = %s'
+        chart_params.append(estado_filter.lower())
+    query_chart += '''
+        GROUP BY pr.nombre_original
+        ORDER BY total DESC, pr.nombre_original
+        LIMIT 10
+    '''
+    cursor.execute(query_chart, chart_params)
+    chart_data = cursor.fetchall()
 
     conn.close()
     total_pages = (total + per_page - 1) // per_page
@@ -511,7 +620,7 @@ def view_data():
                            programas=programas_list, periodo_actual=periodo, categoria_actual=categoria,
                            programa_actual=programa, page=page, total_pages=total_pages, total=total,
                            estados=estados_list, estado_actual=estado_actual,
-                           per_page=per_page)
+                           per_page=per_page, chart_data=chart_data)
 
 
 

@@ -5,6 +5,8 @@ import os
 from models import normalize_text, normalize_phone
 from database import get_db_connection
 
+SEMESTRE_CANCELADO_KEYWORD = 'semestre cancelado'
+
 
 def extract_period_from_filename(filename):
     """Extrae el código del período del nombre del archivo."""
@@ -170,6 +172,10 @@ def import_excel_to_db(filepath, filename, actor=None):
         categoria_id = categoria_result[0] if categoria_result else 2
 
         estado_nombre = str(row.get('estado_matricula', 'Por confirmar')).strip()
+        novedad = str(row.get('novedad', '')).strip()
+        novedad_normalizada = normalize_text(novedad)
+        if SEMESTRE_CANCELADO_KEYWORD in novedad_normalizada:
+            estado_nombre = 'Cancelado'
         cursor.execute('SELECT id FROM estados_matricula WHERE nombre = %s', (estado_nombre,))
         estado_result = cursor.fetchone()
         estado_matricula_id = estado_result[0] if estado_result else 2
@@ -190,7 +196,7 @@ def import_excel_to_db(filepath, filename, actor=None):
                 categoria_id,
                 estado_matricula_id,
                 str(row.get('fecha_inscripcion', '')).strip(),
-                str(row.get('novedad', '')).strip(),
+                novedad,
                 filename,
             ),
         )
