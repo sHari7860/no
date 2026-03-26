@@ -415,16 +415,32 @@ def get_programas_detalles():
     programas_data = cursor.fetchall()
     conn.close()
 
+    programas = []
+    inconsistencias = 0
+    for r in programas_data:
+        confirmados = r[1] or 0
+        nuevos = r[2] or 0
+        antiguos = r[3] or 0
+        es_valido = (nuevos + antiguos) == confirmados
+        if not es_valido:
+            inconsistencias += 1
+
+        programas.append({
+            'nombre': r[0],
+            'confirmados': confirmados,
+            'nuevos': nuevos,
+            'antiguos': antiguos,
+            'es_valido': es_valido,
+            'diferencia': confirmados - (nuevos + antiguos),
+        })
+
     return jsonify({
-        'programas': [
-            {
-                'nombre': r[0],
-                'confirmados': r[1] or 0,
-                'nuevos': r[2] or 0,
-                'antiguos': r[3] or 0
-            }
-            for r in programas_data
-        ]
+        'programas': programas,
+        'validacion': {
+            'total_programas': len(programas),
+            'programas_validos': len(programas) - inconsistencias,
+            'programas_con_inconsistencias': inconsistencias,
+        }
     })
 
 
@@ -452,7 +468,7 @@ def view_data():
     # Maximo 1000 registros por pagina 
     per_page = max(1, min(per_page, 1000))
 
-    query = '''
+    query_base = '''
         SELECT e.documento, e.nombre_completo, pr.nombre_original, pr.tipo_programa,
                per.codigo_periodo, c.nombre, em.nombre, m.fecha_inscripcion,
                m.liquidacion_numero, m.novedad
@@ -466,27 +482,54 @@ def view_data():
     '''
     params = []
     if periodo:
-        query += ' AND per.codigo_periodo = %s'
+        query_base += ' AND per.codigo_periodo = %s'
         params.append(periodo)
     if programa:
-        query += ' AND pr.nombre_original = %s'
+        query_base += ' AND pr.nombre_original = %s'
         params.append(programa)
     if categoria:
-        query += ' AND c.nombre = %s'
+        query_base += ' AND c.nombre = %s'
         params.append(categoria)
     if estado_filter:
-        query += ' AND LOWER(em.nombre) = %s'
+        query_base += ' AND LOWER(em.nombre) = %s'
         params.append(estado_filter.lower())
 
-    query += ' ORDER BY m.fecha_inscripcion DESC'
+    query_ordenada = query_base + ' ORDER BY m.fecha_inscripcion DESC'
 
     cursor = conn.cursor()
-    cursor.execute(f'SELECT COUNT(*) FROM ({query}) AS conteo', params)
+    cursor.execute(f'SELECT COUNT(*) FROM ({query_base}) AS conteo', params)
     total = cursor.fetchone()[0]
 
-    query += ' LIMIT %s OFFSET %s'
-    params.extend([per_page, (page - 1) * per_page])
-    cursor.execute(query, params)
+    # Resumen para gráfico de barras (mismas condiciones del filtro de tabla)
+    chart_query = '''
+        SELECT em.nombre, COUNT(*)
+        FROM matriculas m
+        JOIN programas pr ON m.programa_id = pr.id
+        JOIN periodos per ON m.periodo_id = per.id
+        JOIN categorias c ON m.categoria_id = c.id
+        JOIN estados_matricula em ON m.estado_matricula_id = em.id
+        WHERE 1=1
+    '''
+    chart_params = []
+    if periodo:
+        chart_query += ' AND per.codigo_periodo = %s'
+        chart_params.append(periodo)
+    if programa:
+        chart_query += ' AND pr.nombre_original = %s'
+        chart_params.append(programa)
+    if categoria:
+        chart_query += ' AND c.nombre = %s'
+        chart_params.append(categoria)
+    if estado_filter:
+        chart_query += ' AND LOWER(em.nombre) = %s'
+        chart_params.append(estado_filter.lower())
+    chart_query += ' GROUP BY em.nombre ORDER BY COUNT(*) DESC'
+    cursor.execute(chart_query, chart_params)
+    chart_data = cursor.fetchall()
+
+    paginated_params = params + [per_page, (page - 1) * per_page]
+    query_paginada = query_ordenada + ' LIMIT %s OFFSET %s'
+    cursor.execute(query_paginada, paginated_params)
     datos = cursor.fetchall()
 
     cursor.execute('''
@@ -511,7 +554,9 @@ def view_data():
                            programas=programas_list, periodo_actual=periodo, categoria_actual=categoria,
                            programa_actual=programa, page=page, total_pages=total_pages, total=total,
                            estados=estados_list, estado_actual=estado_actual,
-                           per_page=per_page)
+                           per_page=per_page,
+                           chart_labels=[r[0] for r in chart_data],
+                           chart_values=[r[1] for r in chart_data])
 
 
 

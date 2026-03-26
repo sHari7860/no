@@ -160,4 +160,47 @@
         {% endif %}
     </div>
 </div>
+
+<!-- Gráfico dinámico -->
+<div class="card mt-4">
+    <div class="card-header">
+        <h5 class="mb-0">Distribución por estado (según filtro actual)</h5>
+    </div>
+    <div class="card-body">
+        <canvas id="chartEstadosData" height="90"></canvas>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+    const labelsEstados = {{ chart_labels | tojson }};
+    const valoresEstados = {{ chart_values | tojson }};
+
+    const ctxEstados = document.getElementById('chartEstadosData');
+    if (ctxEstados) {
+        new Chart(ctxEstados, {
+            type: 'bar',
+            data: {
+                labels: labelsEstados,
+                datasets: [{
+                    label: 'Cantidad de matrículas',
+                    data: valoresEstados,
+                    backgroundColor: ['#36A2EB', '#4BC0C0', '#FF6384', '#FFCE56', '#9966FF']
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: { precision: 0 }
+                    }
+                }
+            }
+        });
+    }
+</script>
 {% endblock %}

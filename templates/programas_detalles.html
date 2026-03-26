@@ -23,6 +23,12 @@
     </div>
 </div>
 
+<div class="row mb-3">
+    <div class="col-md-12">
+        <div id="validacionProgramas" class="alert alert-success mb-0" style="display: none;"></div>
+    </div>
+</div>
+
 <!-- Buscador y filtros -->
 <div class="row mb-4">
     <div class="col-md-12">
@@ -183,6 +189,7 @@
             .then(data => {
                 todosLosProgramas = data.programas.filter(p => p.confirmados > 0);
                 programasFiltrados = [...todosLosProgramas];
+                mostrarValidacion(data.validacion);
                 currentPage = 1;
                 // update max label and input max
                 document.getElementById('maxItemsLabel').textContent = `(máx ${todosLosProgramas.length})`;
@@ -196,6 +203,23 @@
                 document.getElementById('cuerpoTabla').innerHTML = 
                     '<tr><td colspan="5" class="text-center text-danger">Error al cargar los datos</td></tr>';
             });
+    }
+
+    function mostrarValidacion(validacion) {
+        const alert = document.getElementById('validacionProgramas');
+        if (!validacion) {
+            alert.style.display = 'none';
+            return;
+        }
+
+        if (validacion.programas_con_inconsistencias > 0) {
+            alert.className = 'alert alert-warning mb-0';
+            alert.innerHTML = `<strong>Validación:</strong> ${validacion.programas_con_inconsistencias} programa(s) con diferencia entre total confirmados y (nuevos + antiguos).`;
+        } else {
+            alert.className = 'alert alert-success mb-0';
+            alert.innerHTML = `<strong>Validación:</strong> datos de programas correctos (${validacion.programas_validos}/${validacion.total_programas} programas consistentes).`;
+        }
+        alert.style.display = 'block';
     }
 
     // Función para renderizar la tabla con paginación
@@ -236,7 +260,7 @@
             const porcentajeNuevos = total > 0 ? ((nuevos / total) * 100).toFixed(1) : 0;
 
             const row = `
-                <tr>
+                <tr class="${programa.es_valido ? '' : 'table-warning'}">
                     <td><strong>${numeroReal}. ${programa.nombre}</strong></td>
                     <td class="text-center">
                         <span class="badge bg-success" style="font-size: 0.95rem; padding: 0.6rem 0.9rem;">
@@ -255,6 +279,7 @@
                     </td>
                     <td class="text-center">
                         <strong>${porcentajeNuevos}%</strong>
+                        ${programa.es_valido ? '' : '<br><small class="text-danger">Revisar diferencia</small>'}
                     </td>
                 </tr>
             `;

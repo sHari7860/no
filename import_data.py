@@ -170,6 +170,11 @@ def import_excel_to_db(filepath, filename, actor=None):
         categoria_id = categoria_result[0] if categoria_result else 2
 
         estado_nombre = str(row.get('estado_matricula', 'Por confirmar')).strip()
+        novedad_texto = str(row.get('novedad', '')).strip()
+        # Regla de negocio: si en observaciones/novedad aparece "semestre cancelado"
+        # el estado final debe quedar como Cancelado aunque venga confirmado en el archivo.
+        if 'semestre cancelado' in novedad_texto.lower():
+            estado_nombre = 'Cancelado'
         cursor.execute('SELECT id FROM estados_matricula WHERE nombre = %s', (estado_nombre,))
         estado_result = cursor.fetchone()
         estado_matricula_id = estado_result[0] if estado_result else 2
@@ -190,7 +195,7 @@ def import_excel_to_db(filepath, filename, actor=None):
                 categoria_id,
                 estado_matricula_id,
                 str(row.get('fecha_inscripcion', '')).strip(),
-                str(row.get('novedad', '')).strip(),
+                novedad_texto,
                 filename,
             ),
         )
