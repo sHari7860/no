@@ -160,4 +160,153 @@
         {% endif %}
     </div>
 </div>
+
+<!-- Gráfica de estado dinámico según filtros -->
+{% if chart_data %}
+<div class="card mt-4">
+    <div class="card-header">
+        <h5>Distribución de Estudiantes por Estado
+            {% if periodo_actual and programa_actual %}
+            - Período: {{ periodo_actual }} | Programa: {{ programa_actual }}
+            {% elif periodo_actual %}
+            - Período: {{ periodo_actual }}
+            {% elif programa_actual %}
+            - Programa: {{ programa_actual }}
+            {% endif %}
+        </h5>
+    </div>
+    <div class="card-body">
+        <canvas id="estadoChart"></canvas>
+    </div>
+</div>
+{% else %}
+<div class="card mt-4">
+    <div class="card-header">
+        <h5>Distribución de Estudiantes por Estado</h5>
+    </div>
+    <div class="card-body">
+        <div class="alert alert-info">
+            Selecciona un <strong>Período</strong> o un <strong>Programa</strong> para ver la gráfica de distribución de estudiantes.
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const periodoSelect = document.querySelector('select[name="periodo"]');
+        const programaSelect = document.querySelector('select[name="programa"]');
+        const form = periodoSelect.closest('form');
+
+        if (periodoSelect && programaSelect && form) {
+            periodoSelect.addEventListener('change', function() {
+                // Limpiar el programa seleccionado para evitar mantener uno no existente en el período
+                if (programaSelect.value !== '') {
+                    programaSelect.value = '';
+                }
+                form.submit();
+            });
+        }
+
+        // Plugin para mostrar etiquetas con datos en las barras
+        const datalabelsPlugin = {
+            id: 'datalabels',
+            afterDatasetsDraw(chart) {
+                const ctx = chart.ctx;
+                chart.data.datasets.forEach((dataset, datasetIndex) => {
+                    const meta = chart.getDatasetMeta(datasetIndex);
+                    meta.data.forEach((datapoint, index) => {
+                        const value = dataset.data[index];
+                        
+                        if (chart.config.type === 'bar') {
+                            const { x, y } = datapoint.getProps(['x', 'y']);
+                            ctx.fillStyle = '#333';
+                            ctx.font = 'bold 14px Arial';
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'bottom';
+                            ctx.fillText(value, x, y - 8);
+                        }
+                    });
+                });
+            }
+        };
+
+        const estadoCounts = {{ estado_counts|tojson }};
+        
+        // Solo crear la gráfica si hay datos
+        if (Object.keys(estadoCounts).length > 0) {
+            const labels = Object.keys(estadoCounts);
+            const values = Object.values(estadoCounts);
+            
+            // Calcular total de registros
+            const totalRegistros = values.reduce((a, b) => a + b, 0);
+
+            const ctx = document.getElementById('estadoChart');
+            if (ctx) {
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Total de estudiantes: ' + totalRegistros,
+                            data: values,
+                            backgroundColor: labels.map((label) => {
+                                if (label.toLowerCase().includes('confirmado')) return 'rgba(40, 167, 69, 0.8)';
+                                if (label.toLowerCase().includes('cancelado')) return 'rgba(220, 53, 69, 0.8)';
+                                if (label.toLowerCase().includes('por confirmar')) return 'rgba(255, 193, 7, 0.8)';
+                                return 'rgba(108, 117, 125, 0.8)';
+                            }),
+                            borderColor: labels.map((label) => {
+                                if (label.toLowerCase().includes('confirmado')) return 'rgba(40, 167, 69, 1)';
+                                if (label.toLowerCase().includes('cancelado')) return 'rgba(220, 53, 69, 1)';
+                                if (label.toLowerCase().includes('por confirmar')) return 'rgba(255, 193, 7, 1)';
+                                return 'rgba(108, 117, 125, 1)';
+                            }),
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        indexAxis: 'y',
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        scales: {
+                            x: {
+                                beginAtZero: true,
+                                ticks: {
+                                    precision: 0
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: 'top',
+                                labels: {
+                                    font: {
+                                        size: 12,
+                                        weight: 'bold'
+                                    }
+                                }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const value = context.parsed.x;
+                                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                        const percentage = ((value / total) * 100).toFixed(1);
+                                        return value + ' estudiantes (' + percentage + '%)';
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    plugins: [datalabelsPlugin]
+                });
+            }
+        }
+    });
+</script>
 {% endblock %}

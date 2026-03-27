@@ -498,10 +498,91 @@ def view_data():
     periodos = cursor.fetchall()
     cursor.execute('SELECT DISTINCT nombre FROM categorias ORDER BY nombre')
     categorias_list = cursor.fetchall()
-    cursor.execute('SELECT DISTINCT nombre_original FROM programas ORDER BY nombre_original')
+
+    # Obtener programas según el período seleccionado (para mantener la dependencia entre filtros)
+    if periodo:
+        cursor.execute('''
+            SELECT DISTINCT pr.nombre_original
+            FROM programas pr
+            INNER JOIN matriculas m ON m.programa_id = pr.id
+            INNER JOIN periodos per ON m.periodo_id = per.id
+            WHERE per.codigo_periodo = %s
+            ORDER BY pr.nombre_original
+        ''', (periodo,))
+    else:
+        cursor.execute('SELECT DISTINCT nombre_original FROM programas ORDER BY nombre_original')
     programas_list = cursor.fetchall()
+
+    # Si un programa está seleccionado pero no pertenece a ese período, reiniciarlo a vacío
+    if programa and (programa,) not in programas_list:
+        programa = ''
+
+        # Recalcular conteo y datos con programa vacio si era inválido para el período
+        query = '''
+            SELECT e.documento, e.nombre_completo, pr.nombre_original, pr.tipo_programa,
+                   per.codigo_periodo, c.nombre, em.nombre, m.fecha_inscripcion,
+                   m.liquidacion_numero, m.novedad
+            FROM matriculas m
+            JOIN estudiantes e ON m.estudiante_id = e.id
+            JOIN programas pr ON m.programa_id = pr.id
+            JOIN periodos per ON m.periodo_id = per.id
+            JOIN categorias c ON m.categoria_id = c.id
+            JOIN estados_matricula em ON m.estado_matricula_id = em.id
+            WHERE 1=1
+        '''
+        params = []
+        if periodo:
+            query += ' AND per.codigo_periodo = %s'
+            params.append(periodo)
+        if categoria:
+            query += ' AND c.nombre = %s'
+            params.append(categoria)
+        if estado_filter:
+            query += ' AND LOWER(em.nombre) = %s'
+            params.append(estado_filter.lower())
+
+        query += ' ORDER BY m.fecha_inscripcion DESC'
+
+        cursor.execute(f'SELECT COUNT(*) FROM ({query}) AS conteo', params)
+        total = cursor.fetchone()[0]
+
+        query += ' LIMIT %s OFFSET %s'
+        params.extend([per_page, (page - 1) * per_page])
+        cursor.execute(query, params)
+        datos = cursor.fetchall()
+
     cursor.execute('SELECT DISTINCT nombre FROM estados_matricula ORDER BY nombre')
     estados_list = cursor.fetchall()
+
+    # Calcular conteos GLOBALES para la gráfica según los filtros activos
+    estado_counts_global = {}
+    chart_data = None  # Solo mostrar gráfica si hay filtro
+    
+    if periodo or programa:  # Solo mostrar gráfica si hay período o programa filtrado
+        query_chart = '''
+            SELECT em.nombre, COUNT(*) as cantidad
+            FROM matriculas m
+            JOIN estados_matricula em ON m.estado_matricula_id = em.id
+            JOIN periodos per ON m.periodo_id = per.id
+            JOIN programas pr ON m.programa_id = pr.id
+            WHERE 1=1
+        '''
+        params_chart = []
+        
+        if periodo:
+            query_chart += ' AND per.codigo_periodo = %s'
+            params_chart.append(periodo)
+        if programa:
+            query_chart += ' AND pr.nombre_original = %s'
+            params_chart.append(programa)
+        
+        query_chart += ' GROUP BY em.nombre ORDER BY em.nombre'
+        
+        cursor.execute(query_chart, params_chart)
+        for row in cursor.fetchall():
+            estado_counts_global[row[0] or 'Desconocido'] = row[1]
+        
+        chart_data = True  # Flag para mostrar la gráfica
 
     conn.close()
     total_pages = (total + per_page - 1) // per_page
@@ -511,7 +592,7 @@ def view_data():
                            programas=programas_list, periodo_actual=periodo, categoria_actual=categoria,
                            programa_actual=programa, page=page, total_pages=total_pages, total=total,
                            estados=estados_list, estado_actual=estado_actual,
-                           per_page=per_page)
+                           per_page=per_page, estado_counts=estado_counts_global, chart_data=chart_data)
 
 
 
