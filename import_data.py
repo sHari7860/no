@@ -42,6 +42,8 @@ def clean_dataframe(df):
         'Correo Institucional': 'correo_institucional',
         'Categoria': 'categoria',
         'Novedad': 'novedad',
+        'Observaciones': 'observaciones',
+        'Observación': 'observaciones',
     }
 
     df = df.rename(columns={col: column_mapping.get(col, col) for col in df.columns})
@@ -98,6 +100,8 @@ def import_excel_to_db(filepath, filename, actor=None):
     registros_duplicados = 0
     estudiantes_existentes = 0
     programas_existentes = 0
+    warnings = []
+    documentos_programas = {}
 
     for _, row in df.iterrows():
         if pd.isna(row.get('documento')) or str(row.get('documento')).strip() == '':
@@ -140,6 +144,16 @@ def import_excel_to_db(filepath, filename, actor=None):
         programa_nombre = str(row.get('programa', '')).strip()
         programa_normalizado = normalize_text(programa_nombre)
 
+        # Detectar casos en que el mismo CC aparece en más de un programa dentro de un mismo archivo.
+        if documento:
+            programas_previos = documentos_programas.get(documento, set())
+            if programa_normalizado and programa_normalizado not in programas_previos and programas_previos:
+                warnings.append(
+                    f'El documento {documento} aparece en varios programas académicos ({", ".join(sorted(programas_previos))} y {programa_nombre}). Verifica que CC y programa coincidan.'
+                )
+            programas_previos.add(programa_normalizado)
+            documentos_programas[documento] = programas_previos
+
         tipo_programa = 'PREGRADO'
         if 'especializacion' in programa_normalizado:
             tipo_programa = 'ESPECIALIZACION'
@@ -169,7 +183,12 @@ def import_excel_to_db(filepath, filename, actor=None):
         categoria_result = cursor.fetchone()
         categoria_id = categoria_result[0] if categoria_result else 2
 
-        estado_nombre = str(row.get('estado_matricula', 'Por confirmar')).strip()
+        observaciones = str(row.get('observaciones', '')).strip()
+        if observaciones and 'semestre cancelado' in observaciones.lower():
+            estado_nombre = 'Cancelado'
+        else:
+            estado_nombre = str(row.get('estado_matricula', 'Por confirmar')).strip()
+
         cursor.execute('SELECT id FROM estados_matricula WHERE nombre = %s', (estado_nombre,))
         estado_result = cursor.fetchone()
         estado_matricula_id = estado_result[0] if estado_result else 2
@@ -180,7 +199,13 @@ def import_excel_to_db(filepath, filename, actor=None):
                 periodo_id, estudiante_id, programa_id, liquidacion_numero,
                 categoria_id, estado_matricula_id, fecha_inscripcion, novedad, archivo_origen
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (periodo_id, estudiante_id, programa_id) DO NOTHING
+            ON CONFLICT (periodo_id, estudiante_id, programa_id) DO UPDATE SET
+                liquidacion_numero = EXCLUDED.liquidacion_numero,
+                categoria_id = EXCLUDED.categoria_id,
+                estado_matricula_id = EXCLUDED.estado_matricula_id,
+                fecha_inscripcion = EXCLUDED.fecha_inscripcion,
+                novedad = EXCLUDED.novedad,
+                archivo_origen = EXCLUDED.archivo_origen
             ''',
             (
                 periodo_id,
@@ -246,4 +271,5 @@ def import_excel_to_db(filepath, filename, actor=None):
         'programas_nuevos': programas_nuevos,
         'programas_existentes': programas_existentes,
         'periodo': periodo_codigo,
+        'warnings': warnings,
     }

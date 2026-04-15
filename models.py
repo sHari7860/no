@@ -128,6 +128,18 @@ def init_db():
     ''')
 
     cursor.execute('''
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        id SERIAL PRIMARY KEY,
+        usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+        token VARCHAR(255) UNIQUE NOT NULL,
+        fecha_expiracion TIMESTAMP NOT NULL,
+        utilizado BOOLEAN NOT NULL DEFAULT FALSE,
+        fecha_uso TIMESTAMP,
+        fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+
+    cursor.execute('''
     CREATE TABLE IF NOT EXISTS auditoria (
         id SERIAL PRIMARY KEY,
         usuario_id INTEGER REFERENCES usuarios(id),

@@ -3,120 +3,133 @@
 {% block title %}Dashboard - Matrículas{% endblock %}
 
 {% block content %}
-<div class="row">
-    <div class="col-md-12">
-        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-            <h1 class="mb-0">Dashboard de Matrículas</h1>
-            <div class="d-flex gap-2">
-                <a href="{{ url_for('index') }}" class="btn btn-outline-secondary btn-sm">Cambiar período</a>
-                {% if periodo_actual %}<span class="badge bg-primary align-self-center">Período {{ periodo_actual }}</span>{% endif %}
-            </div>
-        </div>
-        
-        {% if ultimo_archivo %}
-        <div class="alert alert-info">
-            <strong>Último archivo importado:</strong> {{ ultimo_archivo[0] }} 
-            <br><small>Importado el: {{ ultimo_archivo[1] }} | Registros: {{ ultimo_archivo[2] }}</small>
-        </div>
-        {% endif %}
-    </div>
-</div>
 
-<!-- Tarjetas de resumen -->
-<div class="row mb-4">
-    <div class="col-md-3">
-        <div class="card text-white bg-primary">
-            <div class="card-body">
-                <h5 class="card-title">Total Estudiantes</h5>
-                <h2 class="card-text">{{ total_estudiantes }}</h2>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card text-white bg-success">
-            <div class="card-body">
-                <h5 class="card-title">Total Matrículas</h5>
-                <h2 class="card-text">{{ total_matriculas }}</h2>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card text-white bg-warning">
-            <div class="card-body">
-                <h5 class="card-title">Programas Activos</h5>
-                <h2 class="card-text">{{ total_programas }}</h2>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card text-white bg-info">
-            <div class="card-body">
-                <h5 class="card-title">Período Consultado</h5>
-                <h2 class="card-text">{{ periodo_actual or "N/A" }}</h2>
-            </div>
-        </div>
-    </div>
-</div>
+<div class="container py-4">
 
-<!-- Gráficos -->
-<div class="row mb-4">
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">
-                <h5>Distribución por Categoría</h5>
-            </div>
-            <div class="card-body">
-                <canvas id="categoriaChart"></canvas>
-            </div>
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+        <div>
+            <h2 class="fw-bold mb-1">Dashboard de Matrículas</h2>
+            <p class="text-muted mb-0">Resumen general del sistema</p>
         </div>
-    </div>
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">
-                <h5>Tipos de Programas</h5>
-            </div>
-            <div class="card-body">
-                <canvas id="programaChart"></canvas>
-            </div>
-        </div>
-    </div>
-</div>
 
-<div class="row mb-4">
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">
-                <h5>Estados de Matrícula</h5>
+        <div class="d-flex gap-2">
+            <a href="{{ url_for('index') }}" class="btn btn-outline-secondary btn-sm">
+                ← Cambiar período
+            </a>
+            {% if periodo_actual %}
+            <span class="badge bg-primary px-3 py-2">
+                Período {{ periodo_actual }}
+            </span>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Último archivo -->
+    {% if ultimo_archivo %}
+    <div class="alert alert-info shadow-sm border-0 rounded-3">
+        <strong>Último archivo:</strong> {{ ultimo_archivo[0] }}
+        <div class="small">
+            {{ ultimo_archivo[1] }} · {{ ultimo_archivo[2] }} registros
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Métricas -->
+    <div class="row g-4 mb-4">
+
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm rounded-4 text-center p-3">
+                <div class="text-primary fs-3">👨‍🎓</div>
+                <h6 class="text-muted mt-2">Estudiantes</h6>
+                <h3 class="fw-bold">{{ total_estudiantes }}</h3>
             </div>
-            <div class="card-body">
-                <canvas id="estadoChart"></canvas>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm rounded-4 text-center p-3">
+                <div class="text-success fs-3">📝</div>
+                <h6 class="text-muted mt-2">Matrículas</h6>
+                <h3 class="fw-bold">{{ total_matriculas }}</h3>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm rounded-4 text-center p-3">
+                <div class="text-warning fs-3">📚</div>
+                <h6 class="text-muted mt-2">Programas</h6>
+                <h3 class="fw-bold">{{ total_programas }}</h3>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm rounded-4 text-center p-3">
+                <div class="text-info fs-3">📅</div>
+                <h6 class="text-muted mt-2">Período</h6>
+                <h3 class="fw-bold">{{ periodo_actual or "N/A" }}</h3>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Gráficas -->
+    <div class="row g-4 mb-4">
+
+        <div class="col-lg-6">
+            <div class="card border-0 shadow-sm rounded-4 h-100">
+                <div class="card-header bg-white border-0">
+                    <h6 class="fw-semibold mb-0">Distribución por Categoría</h6>
+                </div>
+                <div class="card-body">
+                    <canvas id="categoriaChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card border-0 shadow-sm rounded-4 h-100">
+                <div class="card-header bg-white border-0">
+                    <h6 class="fw-semibold mb-0">Tipos de Programas</h6>
+                </div>
+                <div class="card-body">
+                    <canvas id="programaChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-lg-6">
+            <div class="card border-0 shadow-sm rounded-4 h-100">
+                <div class="card-header bg-white border-0">
+                    <h6 class="fw-semibold mb-0">Estados de Matrícula</h6>
+                </div>
+                <div class="card-body">
+                    <canvas id="estadoChart"></canvas>
+                </div>
             </div>
         </div>
     </div>
-</div>
 
-<!-- Tablas de datos -->
-<div class="row">
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">Programas Más Solicitados</h5>
-                <a href="{{ url_for('programas_detalles', periodo=periodo_actual) }}" class="btn btn-sm btn-primary">
-                    Ver todos
-                </a>
-            </div>
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table table-striped">
-                        <thead>
-                            <tr>
-                                <th>Programa</th>
-                            </tr>
-                        </thead>
+    <!-- Tablas -->
+    <div class="row g-4">
+
+        <div class="col-lg-6">
+            <div class="card border-0 shadow-sm rounded-4 h-100">
+                <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0 fw-semibold">Programas más solicitados</h6>
+                    <a href="{{ url_for('programas_detalles', periodo=periodo_actual) }}" 
+                       class="btn btn-sm btn-primary">
+                        Ver todos
+                    </a>
+                </div>
+                <div class="card-body">
+                    <table class="table align-middle table-hover">
                         <tbody>
                             {% for programa, total in top_programas %}
                             <tr>
-                                <td>{{ programa }}</td>
+                                <td class="fw-semibold">{{ programa }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -124,26 +137,29 @@
                 </div>
             </div>
         </div>
-    </div>
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">
-                <h5>Matrículas por Período</h5>
-            </div>
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table table-striped">
-                        <thead>
+
+        <div class="col-lg-6">
+            <div class="card border-0 shadow-sm rounded-4 h-100">
+                <div class="card-header bg-white border-0">
+                    <h6 class="fw-semibold mb-0">Matrículas por período</h6>
+                </div>
+                <div class="card-body">
+                    <table class="table align-middle table-hover">
+                        <thead class="table-light">
                             <tr>
                                 <th>Período</th>
-                                <th>Matrículas</th>
+                                <th>Total</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for periodo, total in stats_periodo %}
                             <tr>
                                 <td>{{ periodo }}</td>
-                                <td><span class="badge bg-success">{{ total }}</span></td>
+                                <td>
+                                    <span class="badge bg-success-subtle text-success px-3 py-2">
+                                        {{ total }}
+                                    </span>
+                                </td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -151,8 +167,22 @@
                 </div>
             </div>
         </div>
+
     </div>
+
 </div>
+
+<!-- Hover efecto -->
+<style>
+.card {
+    transition: all 0.25s ease;
+}
+.card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+}
+</style>
+
 {% endblock %}
 
 {% block scripts %}

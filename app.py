@@ -5,7 +5,7 @@ from io import BytesIO
 from datetime import datetime, timedelta
 import secrets
 from werkzeug.utils import secure_filename
-from werkzeug.security import check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from database import init_app, get_db_connection
 from import_data import import_excel_to_db
@@ -58,7 +58,7 @@ def role_required(*allowed_roles):
 @app.before_request
 def require_login():
     # Permitir acceso a rutas de login y recursos estáticos sin autenticación
-    exempt_endpoints = {'login', 'static'}
+    exempt_endpoints = {'login', 'logout', 'forgot_password', 'reset_password', 'static'}
     endpoint = request.endpoint
     if endpoint in exempt_endpoints or endpoint is None:
         return
@@ -140,6 +140,114 @@ def logout():
     return redirect(url_for('login'))
 
 
+@app.route('/forgot_password', methods=['GET', 'POST'])
+def forgot_password():
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        if not username:
+            flash('Ingresa tu nombre de usuario', 'error')
+            return render_template('forgot_password.html')
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT id, username FROM usuarios WHERE username = %s AND activo = TRUE', (username,))
+        user = cursor.fetchone()
+
+        if not user:
+            # No revelar si el usuario existe o no por seguridad
+            flash('Si la cuenta existe, recibirás un enlace de recuperación.', 'success')
+            conn.close()
+            return render_template('forgot_password.html')
+
+        user_id = user[0]
+        # Generar token único
+        reset_token = secrets.token_urlsafe(32)
+        # Válido por 24 horas
+        expiration_time = datetime.utcnow() + timedelta(hours=24)
+
+        cursor.execute(
+            'INSERT INTO password_reset_tokens (usuario_id, token, fecha_expiracion) VALUES (%s, %s, %s)',
+            (user_id, reset_token, expiration_time)
+        )
+        conn.commit()
+        conn.close()
+
+        # Construir el enlace de reset
+        reset_link = url_for('reset_password', token=reset_token, _external=True)
+        
+        # Mostrar el enlace al usuario (en producción, se enviaría por correo)
+        flash(f'Enlace de recuperación generado. Válido por 24 horas:', 'success')
+        flash(f'Copia este enlace: {reset_link}', 'info')
+        
+        return render_template('forgot_password.html', reset_link=reset_link, username_used=username)
+
+    return render_template('forgot_password.html')
+
+
+@app.route('/reset_password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    if request.method == 'GET':
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            'SELECT u.id, u.username FROM password_reset_tokens prt JOIN usuarios u ON prt.usuario_id = u.id WHERE prt.token = %s AND prt.utilizado = FALSE AND prt.fecha_expiracion > %s',
+            (token, datetime.utcnow())
+        )
+        token_data = cursor.fetchone()
+        conn.close()
+
+        if not token_data:
+            flash('El enlace de recuperación es inválido o ha expirado', 'error')
+            return redirect(url_for('login'))
+
+        return render_template('reset_password.html', token=token, username=token_data[1])
+
+    elif request.method == 'POST':
+        password = request.form.get('password', '')
+        password_confirm = request.form.get('password_confirm', '')
+
+        if not password or not password_confirm:
+            flash('Completa todos los campos', 'error')
+            return render_template('reset_password.html', token=token)
+
+        if password != password_confirm:
+            flash('Las contraseñas no coinciden', 'error')
+            return render_template('reset_password.html', token=token)
+
+        if len(password) < 6:
+            flash('La contraseña debe tener al menos 6 caracteres', 'error')
+            return render_template('reset_password.html', token=token)
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            'SELECT u.id FROM password_reset_tokens prt JOIN usuarios u ON prt.usuario_id = u.id WHERE prt.token = %s AND prt.utilizado = FALSE AND prt.fecha_expiracion > %s',
+            (token, datetime.utcnow())
+        )
+        token_data = cursor.fetchone()
+
+        if not token_data:
+            flash('El enlace de recuperación es inválido o ha expirado', 'error')
+            conn.close()
+            return redirect(url_for('login'))
+
+        user_id = token_data[0]
+        new_hash = generate_password_hash(password)
+        cursor.execute(
+            'UPDATE usuarios SET password_hash = %s WHERE id = %s',
+            (new_hash, user_id)
+        )
+        cursor.execute(
+            'UPDATE password_reset_tokens SET utilizado = TRUE, fecha_uso = %s WHERE token = %s',
+            (datetime.utcnow(), token)
+        )
+        conn.commit()
+        conn.close()
+
+        flash('Tu contraseña ha sido restablecida exitosamente. Ahora puedes iniciar sesión.', 'success')
+        return redirect(url_for('login'))
+
+
 @app.route('/')
 @login_required
 def index():
@@ -156,7 +264,7 @@ def index():
         FROM periodos p
         LEFT JOIN matriculas m ON m.periodo_id = p.id
         LEFT JOIN estados_matricula e ON m.estado_matricula_id = e.id
-        WHERE p.codigo_periodo NOT IN ('20260', '20259', '20268', '20263', '20258', '20262')
+        WHERE p.codigo_periodo NOT IN ('20260', '20259', '20268', '20263', '20258')
         GROUP BY p.codigo_periodo
         ORDER BY p.codigo_periodo DESC
     ''')
@@ -296,6 +404,8 @@ def upload_file():
             else:
                 flash(f'Archivo importado exitosamente: {result["nuevas_matriculas"]} nuevas matrículas agregadas', 'success')
                 flash(f'Período: {result["periodo"]}, Total registros: {result["total_registros"]}', 'success')
+                for warning in result.get('warnings', []):
+                    flash(warning, 'warning')
 
             return redirect(url_for('index'))
 
@@ -303,6 +413,36 @@ def upload_file():
         return redirect(request.url)
 
     return render_template('upload.html')
+
+
+@app.route('/delete_period', methods=['POST'])
+@role_required('admin')
+def delete_period():
+    periodo = request.form.get('periodo', '').strip()
+    if not periodo:
+        flash('Período inválido', 'error')
+        return redirect(url_for('index'))
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT id FROM periodos WHERE codigo_periodo = %s', (periodo,))
+    periodo_row = cursor.fetchone()
+    if not periodo_row:
+        conn.close()
+        flash('Período no encontrado', 'error')
+        return redirect(url_for('index'))
+
+    periodo_id = periodo_row[0]
+    cursor.execute('DELETE FROM matriculas WHERE periodo_id = %s', (periodo_id,))
+    deleted_matriculas = cursor.rowcount
+    cursor.execute('DELETE FROM archivos_importados WHERE periodo_id = %s', (periodo_id,))
+    deleted_archivos = cursor.rowcount
+    conn.commit()
+    conn.close()
+
+    log_action('DELETE_PERIOD', f'Período {periodo} eliminado por admin. Matrículas borradas: {deleted_matriculas}, archivos importados borrados: {deleted_archivos}')
+    flash(f'Período {periodo} eliminado y reabierto para nueva importación.', 'success')
+    return redirect(url_for('index'))
 
 
 @app.route('/api/estadisticas')
@@ -432,15 +572,16 @@ def get_programas_detalles():
 @login_required
 def view_data():
     conn = get_db_connection()
-    periodo = request.args.get('periodo', '')
-    programa = request.args.get('programa', '')
-    categoria = request.args.get('categoria', '')
+    periodo = request.args.get('periodo', '').strip()
+    programa = request.args.get('programa', '').strip()
+    categoria = request.args.get('categoria', '').strip()
     # Permitir filtrar por estado de matrícula, predeterminado "confirmado"
     estado_param = request.args.get('estado', None)
     if estado_param is None:
         estado_filter = 'confirmado'
         estado_actual = 'Confirmado'
     else:
+        estado_param = estado_param.strip()
         estado_actual = estado_param
         estado_filter = estado_param if estado_param != '' else None
     page = int(request.args.get('page', 1))
@@ -466,7 +607,7 @@ def view_data():
     '''
     params = []
     if periodo:
-        query += ' AND per.codigo_periodo = %s'
+        query += ' AND TRIM(per.codigo_periodo) = TRIM(%s)'
         params.append(periodo)
     if programa:
         query += ' AND pr.nombre_original = %s'
@@ -506,7 +647,7 @@ def view_data():
             FROM programas pr
             INNER JOIN matriculas m ON m.programa_id = pr.id
             INNER JOIN periodos per ON m.periodo_id = per.id
-            WHERE per.codigo_periodo = %s
+            WHERE TRIM(per.codigo_periodo) = TRIM(%s)
             ORDER BY pr.nombre_original
         ''', (periodo,))
     else:
@@ -532,7 +673,7 @@ def view_data():
         '''
         params = []
         if periodo:
-            query += ' AND per.codigo_periodo = %s'
+            query += ' AND TRIM(per.codigo_periodo) = TRIM(%s)'
             params.append(periodo)
         if categoria:
             query += ' AND c.nombre = %s'
@@ -570,7 +711,7 @@ def view_data():
         params_chart = []
         
         if periodo:
-            query_chart += ' AND per.codigo_periodo = %s'
+            query_chart += ' AND TRIM(per.codigo_periodo) = TRIM(%s)'
             params_chart.append(periodo)
         if programa:
             query_chart += ' AND pr.nombre_original = %s'

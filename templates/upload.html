@@ -3,66 +3,110 @@
 {% block title %}Importar Excel{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
-    <div class="col-md-8">
-        <div class="card">
-            <div class="card-header">
-                <h4>Importar Archivo Excel</h4>
+
+<div class="container py-5">
+
+    <div class="row justify-content-center">
+        <div class="col-lg-7">
+
+            <!-- Card principal -->
+            <div class="card border-0 shadow-lg rounded-4">
+                <div class="card-body p-4">
+
+                    <!-- Header -->
+                    <div class="text-center mb-4">
+                        <h3 class="fw-bold">Importar Archivo Excel</h3>
+                        <p class="text-muted mb-0">
+                            Sube tu archivo de matrículas para procesarlo automáticamente
+                        </p>
+                    </div>
+
+                    <!-- Formulario -->
+                    <form method="POST" enctype="multipart/form-data">
+
+                        <div class="mb-4">
+                            <label for="file" class="form-label fw-semibold">
+                                Archivo Excel (.xlsx, .xls)
+                            </label>
+
+                            <div class="border rounded-3 p-4 text-center bg-light">
+                                <i class="bi bi-file-earmark-excel text-success fs-1"></i>
+                                <p class="mt-2 mb-2 text-muted">
+                                    Arrastra tu archivo aquí o haz clic para seleccionar
+                                </p>
+                                <input class="form-control mt-2" type="file" id="file" name="file" accept=".xlsx,.xls" required>
+                            </div>
+
+                            <small class="text-muted">
+                                El sistema detectará automáticamente el período desde el nombre del archivo.
+                            </small>
+                        </div>
+
+                        <div class="alert alert-warning border-0 shadow-sm">
+                            ⚠️ El sistema validará si el archivo ya fue importado para evitar duplicados.
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary btn-lg rounded-3">
+                                Importar Archivo
+                            </button>
+                            <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+                                Cancelar
+                            </a>
+                        </div>
+
+                    </form>
+
+                </div>
             </div>
-            <div class="card-body">
-                <form method="POST" enctype="multipart/form-data">
-                    <div class="mb-3">
-                        <label for="file" class="form-label">Seleccionar archivo Excel (.xlsx, .xls)</label>
-                        <input class="form-control" type="file" id="file" name="file" accept=".xlsx,.xls" required>
-                        <div class="form-text">
-                            El archivo debe tener el formato del reporte de matrículas. 
-                            El sistema extraerá automáticamente el período del nombre del archivo.
+
+            <!-- Card info -->
+            <div class="card border-0 shadow-sm rounded-4 mt-4">
+                <div class="card-header bg-white border-0">
+                    <h5 class="mb-0 fw-semibold">Requisitos del archivo</h5>
+                </div>
+
+                <div class="card-body">
+
+                    <div class="row">
+                        <div class="col-md-6">
+
+                            <h6 class="fw-semibold">Columnas obligatorias:</h6>
+                            <ul class="small text-muted">
+                                <li>Documento</li>
+                                <li>Nombre Estudiante</li>
+                                <li>Liquidación Nro.</li>
+                                <li>Programa</li>
+                                <li>Estado Matrícula</li>
+                                <li>Fecha Inscripción</li>
+                                <li>Teléfonos</li>
+                                <li>Correo Electrónico</li>
+                                <li>Correo Institucional</li>
+                                <li>Categoría</li>
+                                <li>Novedad</li>
+                            </ul>
+
+                        </div>
+
+                        <div class="col-md-6">
+
+                            <h6 class="fw-semibold">Procesamiento automático:</h6>
+                            <ul class="small text-muted">
+                                <li>Normalización de nombres</li>
+                                <li>Formato de teléfonos</li>
+                                <li>Limpieza de programas duplicados</li>
+                                <li>Estandarización de datos</li>
+                            </ul>
+
                         </div>
                     </div>
-                    
-                    <div class="alert alert-warning">
-                        <strong>Nota:</strong> El sistema verificará automáticamente si el archivo ya fue importado.
-                    </div>
-                    
-                    <button type="submit" class="btn btn-primary">
-                        <i class="bi bi-upload"></i> Importar Archivo
-                    </button>
-                    <a href="{{ url_for('index') }}" class="btn btn-secondary">Cancelar</a>
-                </form>
+
+                </div>
             </div>
-        </div>
-        
-        <div class="card mt-4">
-            <div class="card-header">
-                <h5>Datos a tener en cuenta</h5>
-            </div>
-            <div class="card-body">
-                <ol>
-                    <li>El archivo Excel debe contener las siguientes columnas :
-                        <ul>
-                            <li>Documento</li>
-                            <li>Nombre Estudiante</li>
-                            <li>Liquidación Nro.</li>
-                            <li>Programa</li>
-                            <li>Estado Matricula</li>
-                            <li>Fecha Inscripción</li>
-                            <li>Teléfonos</li>
-                            <li>Correo Electrónico</li>
-                            <li>Correo Institucional</li>
-                            <li>Categoria</li>
-                            <li>Novedad</li>
-                        </ul>
-                    </li>
-                    <li>El sistema normalizará automáticamente:
-                        <ul>
-                            <li>Nombres (elimina tildes, convierte a minúsculas)</li>
-                            <li>Teléfonos (formato consistente)</li>
-                            <li>Programas (evita duplicados por variaciones ortográficas)</li>
-                        </ul>
-                    </li>
-                </ol>
-            </div>
+
         </div>
     </div>
+
 </div>
+
 {% endblock %}
