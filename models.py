@@ -121,10 +121,18 @@ def init_db():
         username VARCHAR(60) UNIQUE NOT NULL,
         password_hash TEXT NOT NULL,
         nombre_completo TEXT NOT NULL,
+        correo_electronico VARCHAR(255),
         rol VARCHAR(30) NOT NULL DEFAULT 'operador',
         activo BOOLEAN NOT NULL DEFAULT TRUE,
         fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
+    ''')
+
+    cursor.execute('ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS correo_electronico VARCHAR(255)')
+    cursor.execute('''
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_usuarios_correo_electronico
+        ON usuarios (LOWER(correo_electronico))
+        WHERE correo_electronico IS NOT NULL
     ''')
 
     cursor.execute('''
@@ -132,12 +140,15 @@ def init_db():
         id SERIAL PRIMARY KEY,
         usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
         token VARCHAR(255) UNIQUE NOT NULL,
+        codigo_hash TEXT,
         fecha_expiracion TIMESTAMP NOT NULL,
         utilizado BOOLEAN NOT NULL DEFAULT FALSE,
         fecha_uso TIMESTAMP,
         fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     ''')
+
+    cursor.execute('ALTER TABLE password_reset_tokens ADD COLUMN IF NOT EXISTS codigo_hash TEXT')
 
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS auditoria (

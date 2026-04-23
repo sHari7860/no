@@ -9,6 +9,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from database import init_app, get_db_connection
 from import_data import import_excel_to_db
+from utils.email_service import send_password_reset_code
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'clave-secreta-para-flask')
@@ -150,102 +151,179 @@ def forgot_password():
 
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute('SELECT id, username FROM usuarios WHERE username = %s AND activo = TRUE', (username,))
+        cursor.execute(
+            'SELECT id, username, correo_electronico FROM usuarios WHERE username = %s AND activo = TRUE',
+            (username,),
+        )
         user = cursor.fetchone()
 
         if not user:
             # No revelar si el usuario existe o no por seguridad
-            flash('Si la cuenta existe, recibirás un enlace de recuperación.', 'success')
+            flash('Si la cuenta existe, recibirás un código de recuperación.', 'success')
             conn.close()
             return render_template('forgot_password.html')
 
-        user_id = user[0]
-        # Generar token único
-        reset_token = secrets.token_urlsafe(32)
-        # Válido por 24 horas
-        expiration_time = datetime.utcnow() + timedelta(hours=24)
+        user_id, username_db, email = user
+        if not email:
+            flash('Si la cuenta existe, recibirás un código de recuperación.', 'success')
+            conn.close()
+            return render_template('forgot_password.html')
+
+        # Invalidar códigos anteriores y generar un nuevo código de 6 dígitos
+        cursor.execute(
+            'UPDATE password_reset_tokens SET utilizado = TRUE, fecha_uso = %s WHERE usuario_id = %s AND utilizado = FALSE',
+            (datetime.utcnow(), user_id),
+        )
+        reset_code = f'{secrets.randbelow(900000) + 100000}'
+        code_hash = generate_password_hash(reset_code)
+        reset_token = secrets.token_urlsafe(24)
+        expiration_time = datetime.utcnow() + timedelta(minutes=15)
 
         cursor.execute(
-            'INSERT INTO password_reset_tokens (usuario_id, token, fecha_expiracion) VALUES (%s, %s, %s)',
-            (user_id, reset_token, expiration_time)
+            'INSERT INTO password_reset_tokens (usuario_id, token, codigo_hash, fecha_expiracion) VALUES (%s, %s, %s, %s)',
+            (user_id, reset_token, code_hash, expiration_time)
         )
         conn.commit()
         conn.close()
 
-        # Construir el enlace de reset
-        reset_link = url_for('reset_password', token=reset_token, _external=True)
-        
-        # Mostrar el enlace al usuario (en producción, se enviaría por correo)
-        flash(f'Enlace de recuperación generado. Válido por 24 horas:', 'success')
-        flash(f'Copia este enlace: {reset_link}', 'info')
-        
-        return render_template('forgot_password.html', reset_link=reset_link, username_used=username)
+        sent, error = send_password_reset_code(email, username_db, reset_code)
+        if not sent:
+            flash('No se pudo enviar el correo de recuperación. Contacta al administrador.', 'error')
+            app.logger.error('Error enviando correo de recuperación para %s: %s', username_db, error)
+            return render_template('forgot_password.html')
+
+        flash('Si la cuenta existe, recibirás un código de recuperación.', 'success')
+        return redirect(url_for('reset_password', username=username_db))
 
     return render_template('forgot_password.html')
 
 
-@app.route('/reset_password/<token>', methods=['GET', 'POST'])
-def reset_password(token):
-    if request.method == 'GET':
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            'SELECT u.id, u.username FROM password_reset_tokens prt JOIN usuarios u ON prt.usuario_id = u.id WHERE prt.token = %s AND prt.utilizado = FALSE AND prt.fecha_expiracion > %s',
-            (token, datetime.utcnow())
-        )
-        token_data = cursor.fetchone()
-        conn.close()
-
-        if not token_data:
-            flash('El enlace de recuperación es inválido o ha expirado', 'error')
-            return redirect(url_for('login'))
-
-        return render_template('reset_password.html', token=token, username=token_data[1])
-
-    elif request.method == 'POST':
+@app.route('/reset_password', methods=['GET', 'POST'])
+def reset_password():
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        reset_code = request.form.get('reset_code', '').strip()
         password = request.form.get('password', '')
         password_confirm = request.form.get('password_confirm', '')
 
-        if not password or not password_confirm:
+        if not username or not reset_code or not password or not password_confirm:
             flash('Completa todos los campos', 'error')
-            return render_template('reset_password.html', token=token)
+            return render_template('reset_password.html', username=username)
 
         if password != password_confirm:
             flash('Las contraseñas no coinciden', 'error')
-            return render_template('reset_password.html', token=token)
+            return render_template('reset_password.html', username=username)
 
         if len(password) < 6:
             flash('La contraseña debe tener al menos 6 caracteres', 'error')
-            return render_template('reset_password.html', token=token)
+            return render_template('reset_password.html', username=username)
 
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute(
-            'SELECT u.id FROM password_reset_tokens prt JOIN usuarios u ON prt.usuario_id = u.id WHERE prt.token = %s AND prt.utilizado = FALSE AND prt.fecha_expiracion > %s',
-            (token, datetime.utcnow())
+            '''
+            SELECT prt.id, u.id, prt.codigo_hash
+            FROM usuarios u
+            JOIN password_reset_tokens prt ON prt.usuario_id = u.id
+            WHERE u.username = %s
+              AND u.activo = TRUE
+              AND prt.utilizado = FALSE
+              AND prt.fecha_expiracion > %s
+            ORDER BY prt.fecha_creacion DESC
+            LIMIT 1
+            ''',
+            (username, datetime.utcnow())
         )
         token_data = cursor.fetchone()
 
         if not token_data:
-            flash('El enlace de recuperación es inválido o ha expirado', 'error')
+            flash('El código es inválido o expiró', 'error')
             conn.close()
-            return redirect(url_for('login'))
+            return render_template('reset_password.html', username=username)
 
-        user_id = token_data[0]
+        token_id, user_id, code_hash = token_data
+        if not code_hash or not check_password_hash(code_hash, reset_code):
+            flash('El código es inválido o expiró', 'error')
+            conn.close()
+            return render_template('reset_password.html', username=username)
+
         new_hash = generate_password_hash(password)
         cursor.execute(
             'UPDATE usuarios SET password_hash = %s WHERE id = %s',
             (new_hash, user_id)
         )
         cursor.execute(
-            'UPDATE password_reset_tokens SET utilizado = TRUE, fecha_uso = %s WHERE token = %s',
-            (datetime.utcnow(), token)
+            'UPDATE password_reset_tokens SET utilizado = TRUE, fecha_uso = %s WHERE id = %s',
+            (datetime.utcnow(), token_id)
         )
         conn.commit()
         conn.close()
 
         flash('Tu contraseña ha sido restablecida exitosamente. Ahora puedes iniciar sesión.', 'success')
         return redirect(url_for('login'))
+
+    username = request.args.get('username', '').strip()
+    return render_template('reset_password.html', username=username)
+
+
+@app.route('/admin/users/create', methods=['GET', 'POST'])
+@role_required('admin')
+def create_user():
+    roles_permitidos = ['admin', 'operador']
+
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        nombre_completo = request.form.get('nombre_completo', '').strip()
+        correo_electronico = request.form.get('correo_electronico', '').strip().lower()
+        rol = request.form.get('rol', 'operador').strip().lower()
+        password = request.form.get('password', '')
+        password_confirm = request.form.get('password_confirm', '')
+
+        if not username or not nombre_completo or not correo_electronico or not password or not password_confirm:
+            flash('Todos los campos son obligatorios', 'error')
+            return render_template('create_user.html', roles=roles_permitidos)
+
+        if rol not in roles_permitidos:
+            flash('Rol inválido', 'error')
+            return render_template('create_user.html', roles=roles_permitidos)
+
+        if password != password_confirm:
+            flash('Las contraseñas no coinciden', 'error')
+            return render_template('create_user.html', roles=roles_permitidos)
+
+        if len(password) < 6:
+            flash('La contraseña debe tener al menos 6 caracteres', 'error')
+            return render_template('create_user.html', roles=roles_permitidos)
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT id FROM usuarios WHERE username = %s', (username,))
+        if cursor.fetchone():
+            conn.close()
+            flash('El nombre de usuario ya existe', 'error')
+            return render_template('create_user.html', roles=roles_permitidos)
+
+        cursor.execute('SELECT id FROM usuarios WHERE LOWER(correo_electronico) = LOWER(%s)', (correo_electronico,))
+        if cursor.fetchone():
+            conn.close()
+            flash('El correo electrónico ya está en uso', 'error')
+            return render_template('create_user.html', roles=roles_permitidos)
+
+        cursor.execute(
+            '''
+            INSERT INTO usuarios (username, password_hash, nombre_completo, correo_electronico, rol)
+            VALUES (%s, %s, %s, %s, %s)
+            ''',
+            (username, generate_password_hash(password), nombre_completo, correo_electronico, rol),
+        )
+        conn.commit()
+        conn.close()
+
+        log_action('CREATE_USER', f'Usuario {username} creado con rol {rol}')
+        flash('Usuario creado correctamente', 'success')
+        return redirect(url_for('create_user'))
+
+    return render_template('create_user.html', roles=roles_permitidos)
 
 
 @app.route('/')

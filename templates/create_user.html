@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}Crear Usuario{% endblock %}
+
+{% block content %}
+<div class="container d-flex align-items-center justify-content-center" style="min-height: 85vh;">
+    <div class="col-md-7 col-lg-6">
+        <div class="card shadow-lg border-0 rounded-4">
+            <div class="card-body p-4">
+                <div class="text-center mb-4">
+                    <h3 class="fw-bold">Crear usuario</h3>
+                    <p class="text-muted">Registra usuarios y define su rol de acceso</p>
+                </div>
+
+                <form method="POST">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Usuario</label>
+                            <input type="text" name="username" class="form-control" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Nombre completo</label>
+                            <input type="text" name="nombre_completo" class="form-control" required>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">Correo electrónico</label>
+                            <input type="email" name="correo_electronico" class="form-control" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Rol</label>
+                            <select name="rol" class="form-select" required>
+                                {% for rol in roles %}
+                                <option value="{{ rol }}">{{ rol|capitalize }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6"></div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Contraseña</label>
+                            <input type="password" name="password" class="form-control" minlength="6" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Confirmar contraseña</label>
+                            <input type="password" name="password_confirm" class="form-control" minlength="6" required>
+                        </div>
+                    </div>
+
+                    <div class="d-grid mt-4">
+                        <button type="submit" class="btn btn-primary btn-lg rounded-3">Crear usuario</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
