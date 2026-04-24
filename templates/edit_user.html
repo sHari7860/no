@@ -27,6 +27,7 @@
                             <input type="text" class="form-control" id="username" name="username" required value="{{ user[1] }}">
                         </div>
 
+
                         <div class="mb-3">
                             <label for="email" class="form-label fw-semibold">
                                 <i class="bi bi-envelope"></i> Correo Electrónico *
@@ -34,6 +35,7 @@
                             <input type="email" class="form-control" id="email" name="email" required value="{{ user[2] }}">
                         </div>
 
+                        
                         <div class="mb-3">
                             <label for="nombre_completo" class="form-label fw-semibold">
                                 <i class="bi bi-person"></i> Nombre Completo *
@@ -48,7 +50,7 @@
                             <select class="form-select" id="role" name="role" required>
                                 <option value="">Seleccionar rol...</option>
                                 <option value="admin" {% if user[4] == 'admin' %}selected{% endif %}>Administrador</option>
-                                <option value="operador" {% if user[4] == 'operador' %}selected{% endif %}>Operador</option>
+                                <option value="operador" {% if user[4] == 'operador' %}selected{% endif %}>Visualizador</option>
                             </select>
                         </div>
 

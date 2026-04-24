@@ -37,7 +37,7 @@
                             <td><strong>{{ user[1] }}</strong></td>
                             <td>{{ user[2] }}</td>
                             <td>{{ user[3] }}</td>
-                            <td>{% if user[4] == 'admin' %}<span class="badge bg-danger">Admin</span>{% else %}<span class="badge bg-info">Operador</span>{% endif %}</td>
+                            <td>{% if user[4] == 'admin' %}<span class="badge bg-danger">Admin</span>{% else %}<span class="badge bg-info">Visualizador</span>{% endif %}</td>
                             <td>{% if user[5] %}<span class="badge bg-success">Activo</span>{% else %}<span class="badge bg-secondary">Inactivo</span>{% endif %}</td>
                             <td>{% if user[6] %}<span class="badge bg-warning text-dark">Requerido</span>{% else %}<span class="badge bg-success">OK</span>{% endif %}</td>
                             <td class="text-muted small">{{ user[7].strftime('%d/%m/%Y %H:%M') if user[7] else 'N/A' }}</td>
