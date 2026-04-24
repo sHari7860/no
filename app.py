@@ -726,6 +726,7 @@ def dashboard():
     ''')
     stats_periodo = cursor.fetchall()
 
+
     conn.close()
 
     return render_template('dashboard.html', total_estudiantes=total_estudiantes, total_matriculas=total_matriculas,
