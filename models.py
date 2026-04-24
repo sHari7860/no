@@ -119,19 +119,25 @@ def init_db():
     CREATE TABLE IF NOT EXISTS usuarios (
         id SERIAL PRIMARY KEY,
         username VARCHAR(60) UNIQUE NOT NULL,
+        email VARCHAR(120) UNIQUE NOT NULL,
         password_hash TEXT NOT NULL,
         nombre_completo TEXT NOT NULL,
-        rol VARCHAR(30) NOT NULL DEFAULT 'operador',
+        rol VARCHAR(30) NOT NULL DEFAULT 'operador' CHECK (rol IN ('admin', 'operador')),
         activo BOOLEAN NOT NULL DEFAULT TRUE,
+        requiere_cambio_password BOOLEAN NOT NULL DEFAULT FALSE,
         fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     ''')
+    cursor.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS email VARCHAR(120) UNIQUE")
+    cursor.execute("UPDATE usuarios SET email = username || '@unitec.edu.co' WHERE email IS NULL")
+    cursor.execute("ALTER TABLE usuarios ALTER COLUMN email SET NOT NULL")
+    cursor.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS requiere_cambio_password BOOLEAN NOT NULL DEFAULT FALSE")
 
     cursor.execute('''
-    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    CREATE TABLE IF NOT EXISTS password_recovery_codes (
         id SERIAL PRIMARY KEY,
-        usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
-        token VARCHAR(255) UNIQUE NOT NULL,
+        email VARCHAR(120) NOT NULL,
+        codigo VARCHAR(6) NOT NULL,
         fecha_expiracion TIMESTAMP NOT NULL,
         utilizado BOOLEAN NOT NULL DEFAULT FALSE,
         fecha_uso TIMESTAMP,
@@ -166,14 +172,15 @@ def init_db():
     default_user = os.getenv('APP_ADMIN_USER', 'admin')
     default_password = os.getenv('APP_ADMIN_PASSWORD', 'admin123')
     default_name = os.getenv('APP_ADMIN_NAME', 'Administrador')
+    default_email = os.getenv('APP_ADMIN_EMAIL', 'admin@unitec.edu.co')
 
     cursor.execute(
         '''
-        INSERT INTO usuarios (username, password_hash, nombre_completo, rol)
-        VALUES (%s, %s, %s, 'admin')
+        INSERT INTO usuarios (username, email, password_hash, nombre_completo, rol)
+        VALUES (%s, %s, %s, %s, 'admin')
         ON CONFLICT (username) DO NOTHING
         ''',
-        (default_user, generate_password_hash(default_password), default_name),
+        (default_user, default_email, generate_password_hash(default_password), default_name),
     )
 
     conn.commit()

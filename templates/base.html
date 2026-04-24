@@ -44,7 +44,7 @@
                         </a>
                     </li>
 
-                    {% if session.get('rol') in ['admin', 'operador'] %}
+                    {% if session.get('rol') == 'admin' %}
                     <li class="nav-item">
                         <a class="nav-link text-dark" href="{{ url_for('upload_file') }}">
                             Importar
@@ -58,10 +58,18 @@
                         </a>
                     </li>
 
-                    {% if session.get('rol') in ['admin', 'operador'] %}
+                    {% if session.get('rol') == 'admin' %}
                     <li class="nav-item">
                         <a class="nav-link text-dark" href="{{ url_for('view_logs') }}">
                             Logs
+                        </a>
+                    </li>
+                    {% endif %}
+
+                    {% if session.get('rol') == 'admin' %}
+                    <li class="nav-item">
+                        <a class="nav-link text-dark" href="{{ url_for('users') }}">
+                            Usuarios
                         </a>
                     </li>
                     {% endif %}
@@ -73,6 +81,12 @@
                             {{ session.get('username') }}
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0">
+                            <li>
+                                <a class="dropdown-item" href="{{ url_for('change_password') }}">
+                                    <i class="bi bi-key"></i> Cambiar contraseña
+                                </a>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
                             <li>
                                 <a class="dropdown-item" href="{{ url_for('logout') }}">
                                     Cerrar sesión
