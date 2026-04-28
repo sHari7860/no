@@ -202,19 +202,27 @@ def forgot_password():
         # Enviar el código por correo
         try:
             msg = Message(
-                subject='Código de verificación para recuperar contraseña',
+                subject='Dashboard Matrículas - Código de recuperación de contraseña',
                 recipients=[email],
+                body=(
+                    f'Hola {user[1]},\n\n'
+                    'Has solicitado recuperar tu contraseña en Dashboard Matrículas.\n'
+                    f'Tu código de recuperación es: {verification_code}\n\n'
+                    'Este código es válido por 30 minutos.\n'
+                    'Si no solicitaste este cambio, ignora este correo.\n'
+                ),
                 html=f'''
                 <html>
                     <body style="font-family: Arial, sans-serif;">
-                        <h2>Recuperación de Contraseña</h2>
+                        <h2>Dashboard Matrículas</h2>
+                        <h3>Recuperación de Contraseña</h3>
                         <p>Hola {user[1]},</p>
-                        <p>Tu código de verificación es:</p>
+                        <p>Tu código de recuperación de contraseña es:</p>
                         <h1 style="color: #007bff; letter-spacing: 5px;">{verification_code}</h1>
                         <p>Este código es válido por 30 minutos.</p>
                         <p>Si no solicitaste la recuperación de contraseña, ignora este mensaje.</p>
                         <hr>
-                        <p style="color: #666; font-size: 12px;">UNITEC - Sistema de Gestión</p>
+                        <p style="color: #666; font-size: 12px;">Dashboard Matrículas</p>
                     </body>
                 </html>
                 '''

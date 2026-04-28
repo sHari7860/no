@@ -9,22 +9,24 @@ Si has olvidado tu contraseña, sigue estos pasos para restablecerla:
 2. En la parte inferior, verás un enlace que dice "¿Olvidaste tu contraseña? Recupérala aquí"
 3. Haz clic en ese enlace
 
-### Paso 2: Solicitar el enlace de reset
-1. Ingresa tu **nombre de usuario** (el que usas para iniciar sesión)
-2. Haz clic en "Enviar Enlace"
-3. Verás un enlace de recuperación en pantalla
+### Paso 2: Solicitar el código de recuperación
+1. Ingresa tu **correo electrónico registrado** (Gmail, Hotmail, Outlook, etc.)
+2. Haz clic en "Enviar Código"
+3. El sistema enviará un código al correo registrado con el asunto:
+   **"Dashboard Matrículas - Código de recuperación de contraseña"**
 
-### Paso 3: Copiar el enlace
-1. El sistema te mostrará un enlace único para restablecer tu contraseña
-2. Haz clic en el botón "Copiar" o copia manualmente el enlace
-3. **Nota**: Este enlace es válido por **24 horas** solamente
+### Paso 3: Revisar tu correo electrónico
+1. Abre tu bandeja de entrada del correo registrado
+2. Busca el mensaje con asunto **"Dashboard Matrículas - Código de recuperación de contraseña"**
+3. Copia el código de recuperación
+4. **Nota**: El código es válido por **30 minutos** solamente
 
-### Paso 4: Abrir el enlace de reset
-1. Abre el enlace en tu navegador
-2. Se cargará la página de "Restablecer Contraseña"
+### Paso 4: Verificar código
+1. Regresa a la aplicación
+2. Ingresa el código recibido en la pantalla de verificación
 
 ### Paso 5: Crear una nueva contraseña
-1. **Nueva Contraseña**: Ingresa una contraseña segura (mínimo 6 caracteres)
+1. **Nueva Contraseña**: Ingresa una contraseña segura (mínimo 8 caracteres)
 2. **Confirmar Contraseña**: Repite la misma contraseña
 3. El sistema te mostrará si las contraseñas coinciden con un color (verde = coinciden, rojo = no coinciden)
 4. Haz clic en "Restablecer Contraseña"
@@ -38,21 +40,24 @@ Si has olvidado tu contraseña, sigue estos pasos para restablecerla:
 
 ## Problemas comunes
 
-### "El enlace de recuperación es inválido o ha expirado"
-- **Causa**: El enlace tiene más de 24 horas o ya fue usado
+### "El código de recuperación es inválido o ha expirado"
+- **Causa**: El código tiene más de 30 minutos o ya fue usado
 - **Solución**: Repite el proceso desde el inicio (Paso 1)
 
 ### "Las contraseñas no coinciden"
 - **Causa**: Los dos campos de contraseña son diferentes
 - **Solución**: Asegúrate de escribir exactamente lo mismo en ambos campos
 
-### "La contraseña debe tener al menos 6 caracteres"
+### "La contraseña debe tener al menos 8 caracteres"
 - **Causa**: Tu contraseña es muy corta
-- **Solución**: Crea una contraseña con mínimo 6 caracteres
+- **Solución**: Crea una contraseña con mínimo 8 caracteres
 
-### No recibí el enlace
-- **Nota**: El sistema muestra el enlace directamente en pantalla (no por correo en esta versión)
-- **Solución**: Copia el enlace que aparece después de ingresar tu usuario
+### No recibí el código
+- **Nota**: El sistema envía un correo electrónico al email registrado
+- **Solución**:
+  1. Revisa carpeta de spam/no deseado
+  2. Verifica que el correo esté bien escrito
+  3. Espera unos minutos e intenta de nuevo
 
 ---
 
@@ -63,9 +68,9 @@ Si has olvidado tu contraseña, sigue estos pasos para restablecerla:
 - Evita información personal (nombre, fecha, etc.)
 - No uses contraseñas iguales en varias aplicaciones
 
-✅ **Protege tu enlace de reset**:
-- No compartas el enlace de recuperación con nadie
-- El enlace expira en 24 horas por seguridad
+✅ **Protege tu código de recuperación**:
+- No compartas el código de recuperación con nadie
+- El código expira en 30 minutos por seguridad
 
 ✅ **Asegura tu acceso a la aplicación**:
 - Cierra sesión cuando termines
