@@ -758,7 +758,8 @@ def upload_file():
                 flash(result['error'], 'error')
                 os.remove(filepath)
             else:
-                flash(f'Archivo importado exitosamente: {result["nuevas_matriculas"]} nuevas matrículas agregadas', 'success')
+                tipo_label = 'registros CRM de inscripciones' if result.get('tipo_archivo') == 'CRM_INSCRIPCIONES' else 'nuevas matrículas'
+                flash(f'Archivo importado exitosamente: {result["nuevas_matriculas"]} {tipo_label} agregadas', 'success')
                 flash(f'Período: {result["periodo"]}, Total registros: {result["total_registros"]}', 'success')
                 for warning in result.get('warnings', []):
                     flash(warning, 'warning')

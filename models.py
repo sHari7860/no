@@ -104,16 +104,37 @@ def init_db():
     ''')
 
     cursor.execute('''
+    CREATE TABLE IF NOT EXISTS inscripciones_crm (
+        id SERIAL PRIMARY KEY,
+        periodo_id INTEGER NOT NULL REFERENCES periodos(id),
+        estudiante_id INTEGER NOT NULL REFERENCES estudiantes(id),
+        programa_id INTEGER NOT NULL REFERENCES programas(id),
+        formulario_numero TEXT,
+        formulario_numero_norm TEXT GENERATED ALWAYS AS (COALESCE(formulario_numero, '')) STORED,
+        estado TEXT,
+        estado_inscripciones TEXT,
+        jornada TEXT,
+        fecha_inscripcion TEXT,
+        usuario_crm TEXT,
+        archivo_origen TEXT,
+        fecha_importacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (periodo_id, estudiante_id, programa_id, formulario_numero_norm)
+    )
+    ''')
+
+    cursor.execute('''
     CREATE TABLE IF NOT EXISTS archivos_importados (
         id SERIAL PRIMARY KEY,
         nombre_archivo TEXT UNIQUE NOT NULL,
         periodo_id INTEGER REFERENCES periodos(id),
         fecha_importacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        tipo_datos VARCHAR(30) NOT NULL DEFAULT 'MATRICULAS',
         total_registros INTEGER,
         nuevos_registros INTEGER,
         registros_actualizados INTEGER
     )
     ''')
+    cursor.execute("ALTER TABLE archivos_importados ADD COLUMN IF NOT EXISTS tipo_datos VARCHAR(30) NOT NULL DEFAULT 'MATRICULAS'")
 
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS usuarios (
