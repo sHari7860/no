@@ -1,9 +1,13 @@
-import pandas as pd
 import re
 import glob
 import os
 from models import normalize_text, normalize_phone
 from database import get_db_connection
+
+
+def get_pandas():
+    import pandas as pd
+    return pd
 
 
 def extract_period_from_filename(filename):
@@ -55,6 +59,7 @@ def clean_dataframe(df):
 
 
 def process_telefono(telefono_str):
+    pd = get_pandas()
     if pd.isna(telefono_str) or telefono_str == 'nan':
         return '', ''
 
@@ -76,6 +81,7 @@ def import_excel_to_db(filepath, filename, actor=None):
         conn.close()
         return {'error': 'Este archivo ya fue importado anteriormente'}
 
+    pd = get_pandas()
     try:
         df = pd.read_excel(filepath)
     except Exception as exc:

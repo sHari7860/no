@@ -347,12 +347,66 @@ def reset_password():
 @app.route('/users')
 @role_required('admin')
 def users():
+    status = request.args.get('status', 'todos').strip().lower()
+    if status not in ['todos', 'activos', 'inactivos']:
+        status = 'todos'
+
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT id, username, email, nombre_completo, rol, activo, requiere_cambio_password, fecha_creacion FROM usuarios ORDER BY fecha_creacion DESC')
+    if status == 'activos':
+        cursor.execute('SELECT id, username, email, nombre_completo, rol, activo, requiere_cambio_password, fecha_creacion FROM usuarios WHERE activo = TRUE ORDER BY fecha_creacion DESC')
+    elif status == 'inactivos':
+        cursor.execute('SELECT id, username, email, nombre_completo, rol, activo, requiere_cambio_password, fecha_creacion FROM usuarios WHERE activo = FALSE ORDER BY fecha_creacion DESC')
+    else:
+        cursor.execute('SELECT id, username, email, nombre_completo, rol, activo, requiere_cambio_password, fecha_creacion FROM usuarios ORDER BY fecha_creacion DESC')
     users_list = cursor.fetchall()
+
+    cursor.execute('SELECT COUNT(*) FROM usuarios')
+    total_users = cursor.fetchone()[0]
+    cursor.execute('SELECT COUNT(*) FROM usuarios WHERE activo = TRUE')
+    count_activos = cursor.fetchone()[0]
+    cursor.execute('SELECT COUNT(*) FROM usuarios WHERE activo = FALSE')
+    count_inactivos = cursor.fetchone()[0]
     conn.close()
-    return render_template('users.html', users=users_list)
+
+    return render_template('users.html', users=users_list, status=status,
+                           total_users=total_users, count_activos=count_activos,
+                           count_inactivos=count_inactivos)
+
+
+@app.route('/toggle_user_status/<int:user_id>', methods=['POST'])
+@role_required('admin')
+def toggle_user_status(user_id):
+    if user_id == session.get('user_id'):
+        flash('No puedes cambiar el estado de tu propio usuario', 'error')
+        return redirect(url_for('users'))
+
+    status = request.form.get('status', 'todos').strip().lower()
+    if status not in ['todos', 'activos', 'inactivos']:
+        status = 'todos'
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT username, activo FROM usuarios WHERE id = %s', (user_id,))
+    user = cursor.fetchone()
+    if not user:
+        conn.close()
+        flash('Usuario no encontrado', 'error')
+        return redirect(url_for('users', status=status))
+
+    new_status = not user[1]
+    cursor.execute('UPDATE usuarios SET activo = %s WHERE id = %s', (new_status, user_id))
+    conn.commit()
+    conn.close()
+
+    if new_status:
+        log_action('ACTIVATE_USER', f'Usuario activado: {user[0]}')
+        flash('Usuario activado exitosamente', 'success')
+    else:
+        log_action('INACTIVATE_USER', f'Usuario inactivado: {user[0]}')
+        flash('Usuario inactivado exitosamente', 'success')
+
+    return redirect(url_for('users', status=status))
 
 
 @app.route('/create_user', methods=['GET', 'POST'])
@@ -508,57 +562,149 @@ def edit_user(user_id):
     return render_template('edit_user.html', user=user)
 
 
+def send_verification_email(email, username, verification_code, subject):
+    """Envía un correo de verificación con código al usuario."""
+    if not app.config['MAIL_USERNAME'] or not app.config['MAIL_PASSWORD']:
+        return False, 'La configuración del correo no está completa. Contacta al administrador.'
+
+    try:
+        msg = Message(
+            subject=subject,
+            recipients=[email],
+            html=f'''
+            <html>
+                <body style="font-family: Arial, sans-serif;">
+                    <h2>Verificación de cambio de contraseña</h2>
+                    <p>Hola {username},</p>
+                    <p>Tu código de verificación es:</p>
+                    <h1 style="color: #007bff; letter-spacing: 5px;">{verification_code}</h1>
+                    <p>Este código es válido por 30 minutos.</p>
+                    <p>Si no solicitaste este cambio, ignora este mensaje.</p>
+                    <hr>
+                    <p style="color: #666; font-size: 12px;">UNITEC - Sistema de Gestión</p>
+                </body>
+            </html>
+            '''
+        )
+        mail.send(msg)
+        return True, None
+    except Exception as e:
+        print(f'Error enviando correo: {e}')
+        return False, 'Error al enviar el correo. Por favor intenta de nuevo.'
+
+
 @app.route('/change_password', methods=['GET', 'POST'])
 @login_required
 def change_password():
-    # Verificar si es un cambio forzado
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT requiere_cambio_password FROM usuarios WHERE id = %s', (session['user_id'],))
+    cursor.execute('SELECT requiere_cambio_password, email, username FROM usuarios WHERE id = %s', (session['user_id'],))
     user_data = cursor.fetchone()
     cursor.close()
     conn.close()
-    
-    force_change = user_data and user_data[0]
-    
+
+    if not user_data:
+        flash('Usuario no encontrado', 'error')
+        return redirect(url_for('index'))
+
+    force_change = user_data[0]
+    user_email = user_data[1]
+    username = user_data[2]
+    code_sent = False
+
     if request.method == 'POST':
+        action = request.form.get('action', 'change_password')
+
+        if action == 'send_code':
+            if not user_email:
+                flash('No hay correo asociado a esta cuenta', 'error')
+                return render_template('change_password.html', force_change=force_change, user_email=user_email, code_sent=False)
+
+            verification_code = ''.join(random.choices(string.digits, k=6))
+            expiration_time = datetime.utcnow() + timedelta(minutes=30)
+
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                'INSERT INTO password_recovery_codes (email, codigo, fecha_expiracion) VALUES (%s, %s, %s)',
+                (user_email, verification_code, expiration_time)
+            )
+            conn.commit()
+            cursor.close()
+            conn.close()
+
+            sent, error = send_verification_email(
+                user_email,
+                username,
+                verification_code,
+                'Código de verificación para cambio de contraseña'
+            )
+
+            if not sent:
+                flash(error, 'error')
+                return render_template('change_password.html', force_change=force_change, user_email=user_email, code_sent=False)
+
+            flash('Código de verificación enviado a tu correo.', 'success')
+            code_sent = True
+            return render_template('change_password.html', force_change=force_change, user_email=user_email, code_sent=code_sent)
+
+        # Cambio de contraseña habitual
         current_password = request.form.get('current_password', '')
         new_password = request.form.get('new_password', '')
         confirm_password = request.form.get('confirm_password', '')
+        verification_code = request.form.get('verification_code', '').strip()
 
-        # Si no es cambio forzado, validar contraseña actual
+        if not verification_code:
+            flash('Ingresa el código de verificación enviado por correo.', 'error')
+            return render_template('change_password.html', force_change=force_change, user_email=user_email, code_sent=False)
+
         if not force_change and not current_password:
             flash('Completa todos los campos', 'error')
-            return render_template('change_password.html', force_change=force_change)
+            return render_template('change_password.html', force_change=force_change, user_email=user_email, code_sent=False)
 
         if not new_password or not confirm_password:
             flash('Completa todos los campos', 'error')
-            return render_template('change_password.html', force_change=force_change)
+            return render_template('change_password.html', force_change=force_change, user_email=user_email, code_sent=False)
 
         if new_password != confirm_password:
             flash('Las nuevas contraseñas no coinciden', 'error')
-            return render_template('change_password.html', force_change=force_change)
+            return render_template('change_password.html', force_change=force_change, user_email=user_email, code_sent=False)
 
         if len(new_password) < 8:
             flash('La nueva contraseña debe tener al menos 8 caracteres', 'error')
-            return render_template('change_password.html', force_change=force_change)
+            return render_template('change_password.html', force_change=force_change, user_email=user_email, code_sent=False)
 
-        # Si no es cambio forzado, verificar contraseña actual
         if not force_change:
             conn = get_db_connection()
             cursor = conn.cursor()
             cursor.execute('SELECT password_hash FROM usuarios WHERE id = %s', (session['user_id'],))
-            user_data = cursor.fetchone()
+            current_user_data = cursor.fetchone()
             cursor.close()
             conn.close()
 
-            if not user_data or not check_password_hash(user_data[0], current_password):
+            if not current_user_data or not check_password_hash(current_user_data[0], current_password):
                 flash('Contraseña actual incorrecta', 'error')
-                return render_template('change_password.html', force_change=force_change)
+                return render_template('change_password.html', force_change=force_change, user_email=user_email, code_sent=False)
 
-        # Actualizar contraseña
         conn = get_db_connection()
         cursor = conn.cursor()
+        cursor.execute(
+            '''SELECT id FROM password_recovery_codes
+               WHERE email = %s AND codigo = %s AND utilizado = FALSE
+               AND fecha_expiracion > %s''',
+            (user_email, verification_code, datetime.utcnow())
+        )
+        code_entry = cursor.fetchone()
+
+        if not code_entry:
+            conn.close()
+            flash('Código inválido o expirado', 'error')
+            return render_template('change_password.html', force_change=force_change, user_email=user_email, code_sent=False)
+
+        cursor.execute(
+            'UPDATE password_recovery_codes SET utilizado = TRUE, fecha_uso = %s WHERE id = %s',
+            (datetime.utcnow(), code_entry[0])
+        )
         cursor.execute(
             'UPDATE usuarios SET password_hash = %s, requiere_cambio_password = %s WHERE id = %s',
             (generate_password_hash(new_password), False, session['user_id'])
@@ -571,7 +717,7 @@ def change_password():
         flash('Contraseña cambiada exitosamente', 'success')
         return redirect(url_for('index'))
 
-    return render_template('change_password.html', force_change=force_change)
+    return render_template('change_password.html', force_change=force_change, user_email=user_email, code_sent=False)
 
 
 @app.route('/delete_user/<int:user_id>', methods=['POST'])

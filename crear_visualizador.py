@@ -44,11 +44,11 @@ def crear_usuario():
         conn.commit()
         conn.close()
         
-        print("✅ Usuario visualizador creado exitosamente")
+        print(" Usuario visualizador creado exitosamente")
         print(f"   Usuario: {USERNAME}")
         print(f"   Contraseña: {PASSWORD}")
         print(f"   Rol: {ROL}")
-        print("\n📋 Permisos:")
+        print("\n Permisos:")
         print("   ✓ Ver Dashboard")
         print("   ✓ Ver Datos")
         print("   ✓ Exportar CSV")
@@ -56,7 +56,7 @@ def crear_usuario():
         print("   ✗ Ver Logs")
         
     except Exception as e:
-        print(f"❌ Error al crear usuario: {str(e)}")
+        print(f" Error al crear usuario: {str(e)}")
         return False
     
     return True
