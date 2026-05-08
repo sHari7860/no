@@ -199,30 +199,15 @@ def forgot_password():
             flash('La configuración del correo no está completa. Contacta al administrador.', 'error')
             return render_template('forgot_password.html')
 
-        # Enviar el código por correo
-        try:
-            msg = Message(
-                subject='Código de verificación para recuperar contraseña',
-                recipients=[email],
-                html=f'''
-                <html>
-                    <body style="font-family: Arial, sans-serif;">
-                        <h2>Recuperación de Contraseña</h2>
-                        <p>Hola {user[1]},</p>
-                        <p>Tu código de verificación es:</p>
-                        <h1 style="color: #007bff; letter-spacing: 5px;">{verification_code}</h1>
-                        <p>Este código es válido por 30 minutos.</p>
-                        <p>Si no solicitaste la recuperación de contraseña, ignora este mensaje.</p>
-                        <hr>
-                        <p style="color: #666; font-size: 12px;">UNITEC - Sistema de Gestión</p>
-                    </body>
-                </html>
-                '''
-            )
-            mail.send(msg)
-        except Exception as e:
-            print(f'Error enviando correo: {e}')
-            flash('Error al enviar el código. Por favor intenta de nuevo.', 'error')
+        sent, error = send_verification_email(
+            email,
+            user[1],
+            verification_code,
+            'Código de verificación dashboard'
+        )
+
+        if not sent:
+            flash(error, 'error')
             conn.close()
             return render_template('forgot_password.html')
 
@@ -574,12 +559,12 @@ def send_verification_email(email, username, verification_code, subject):
             html=f'''
             <html>
                 <body style="font-family: Arial, sans-serif;">
-                    <h2>Verificación de cambio de contraseña</h2>
+                    <h2>Código de verificación Dashboard</h2>
                     <p>Hola {username},</p>
-                    <p>Tu código de verificación es:</p>
+                    <p>Tu código de verificación dashboard es:</p>
                     <h1 style="color: #007bff; letter-spacing: 5px;">{verification_code}</h1>
                     <p>Este código es válido por 30 minutos.</p>
-                    <p>Si no solicitaste este cambio, ignora este mensaje.</p>
+                    <p>Si no solicitaste este proceso, ignora este mensaje.</p>
                     <hr>
                     <p style="color: #666; font-size: 12px;">UNITEC - Sistema de Gestión</p>
                 </body>

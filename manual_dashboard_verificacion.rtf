@@ -1,0 +1,33 @@
+{\rtf1\ansi\deff0
+{\fonttbl{\f0 Calibri;}}
+\fs24
+\b Manual de Verificaci\'f3n de C\'f3digo - Dashboard\b0\par
+\par
+\b 1. Objetivo\b0\par
+Este manual describe el flujo para solicitar, recibir y validar un c\'f3digo de verificaci\'f3n del dashboard por correo electr\'f3nico.\par
+\par
+\b 2. Alcance\b0\par
+Aplica a cualquier proceso del sistema que requiera enviar c\'f3digos de verificaci\'f3n por correo (recuperaci\'f3n de contrase\'f1a y cambio de contrase\'f1a).\par
+\par
+\b 3. Flujo funcional\b0\par
+1) El usuario solicita el c\'f3digo desde la interfaz.\par
+2) El sistema genera un c\'f3digo num\'e9rico de 6 d\'edgitos.\par
+3) El sistema almacena el c\'f3digo con vigencia de 30 minutos.\par
+4) El sistema env\'eda un correo con asunto de verificaci\'f3n y mensaje de c\'f3digo de verificaci\'f3n dashboard.\par
+5) El usuario ingresa el c\'f3digo en el formulario correspondiente.\par
+6) El sistema valida vigencia, coincidencia y estado de uso del c\'f3digo.\par
+\par
+\b 4. Validaciones clave\b0\par
+- Correo configurado (SMTP, usuario, contrase\'f1a).\par
+- C\'f3digo no expirado y no utilizado.\par
+- Contrase\'f1a nueva con reglas m\'ednimas de seguridad.\par
+\par
+\b 5. Mensajes al usuario\b0\par
+- \ldblquote Un c\'f3digo de verificaci\'f3n ha sido enviado a tu correo\rdblquote.\par
+- \ldblquote C\'f3digo inv\'e1lido o expirado\rdblquote cuando aplique.\par
+\par
+\b 6. Recomendaciones operativas\b0\par
+- Revisar carpeta de spam/correo no deseado.\par
+- Confirmar que el correo del usuario est\'e9 activo y bien escrito.\par
+- Monitorear errores de entrega SMTP en logs de aplicaci\'f3n.\par
+}
