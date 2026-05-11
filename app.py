@@ -1,8 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file, session
 from flask_mail import Mail, Message
 import os
-import string
-import random
 from functools import wraps
 from io import BytesIO
 from datetime import datetime, timedelta
@@ -36,6 +34,8 @@ mail = Mail(app)
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 ALLOWED_EXTENSIONS = {'xlsx', 'xls'}
+PASSWORD_RESET_CODE_EXPIRATION_MINUTES = int(os.getenv('PASSWORD_RESET_CODE_EXPIRATION_MINUTES', 30))
+PASSWORD_RESET_EMAIL_SUBJECT = 'codigo verificacion dahsboard'
 
 
 def allowed_file(filename):
@@ -163,6 +163,57 @@ def logout():
     return redirect(url_for('login'))
 
 
+def generate_password_reset_code():
+    """Genera un código numérico aleatorio de 6 dígitos para recuperar contraseña."""
+    return f'{secrets.randbelow(1000000):06d}'
+
+
+def build_password_reset_email_body(verification_code, expiration_time):
+    """Construye el contenido de texto del correo con código y expiración."""
+    expiration_label = expiration_time.strftime('%Y-%m-%d %H:%M UTC')
+    return (
+        f'Código de verificación: {verification_code}\n\n'
+        f'Este código expira el {expiration_label}.\n'
+        'Si no solicitaste recuperar tu contraseña, ignora este correo.'
+    )
+
+
+def build_password_reset_email_html(verification_code, expiration_time):
+    """Construye el contenido HTML del correo con código y expiración."""
+    expiration_label = expiration_time.strftime('%Y-%m-%d %H:%M UTC')
+    return f"""
+    <html>
+        <body style="font-family: Arial, sans-serif; color: #212529;">
+            <h2>Código de verificación dashboard</h2>
+            <p>Tu código de verificación es:</p>
+            <h1 style="color: #0d6efd; letter-spacing: 6px;">{verification_code}</h1>
+            <p>Este código expira el <strong>{expiration_label}</strong>.</p>
+            <p>Si no solicitaste recuperar tu contraseña, ignora este correo.</p>
+        </body>
+    </html>
+    """
+
+
+def send_password_reset_code_email(email, verification_code, expiration_time):
+    """Envía por correo el código de recuperación de contraseña."""
+    if not app.config['MAIL_USERNAME'] or not app.config['MAIL_PASSWORD']:
+        return False, 'La configuración del correo no está completa. Contacta al administrador.'
+
+    try:
+        msg = Message(
+            subject=PASSWORD_RESET_EMAIL_SUBJECT,
+            recipients=[email],
+            body=build_password_reset_email_body(verification_code, expiration_time),
+            html=build_password_reset_email_html(verification_code, expiration_time),
+            sender=app.config['MAIL_DEFAULT_SENDER'],
+        )
+        mail.send(msg)
+        return True, None
+    except Exception as e:
+        print(f'Error enviando correo de recuperación: {e}')
+        return False, 'Error al enviar el código. Por favor intenta de nuevo.'
+
+
 @app.route('/forgot_password', methods=['GET', 'POST'])
 def forgot_password():
     if request.method == 'POST':
@@ -183,38 +234,37 @@ def forgot_password():
             return render_template('forgot_password.html')
 
         email = user[2].strip().lower()
+        verification_code = generate_password_reset_code()
+        expiration_time = datetime.utcnow() + timedelta(minutes=PASSWORD_RESET_CODE_EXPIRATION_MINUTES)
 
-        # Generar código de 6 dígitos
-        verification_code = ''.join(random.choices(string.digits, k=6))
-        user_id = user[0]
-        expiration_time = datetime.utcnow() + timedelta(minutes=30)
+        # Invalidar códigos anteriores sin usar para que solo el último código enviado sea válido.
+        cursor.execute(
+            """UPDATE password_recovery_codes
+               SET utilizado = TRUE, fecha_uso = %s
+               WHERE email = %s AND utilizado = FALSE""",
+            (datetime.utcnow(), email),
+        )
 
-        # Guardar el código en la BD
         cursor.execute(
             'INSERT INTO password_recovery_codes (email, codigo, fecha_expiracion) VALUES (%s, %s, %s)',
-            (email, verification_code, expiration_time)
+            (email, verification_code, expiration_time),
         )
         conn.commit()
 
-        if not app.config['MAIL_USERNAME'] or not app.config['MAIL_PASSWORD']:
-            conn.close()
-            flash('La configuración del correo no está completa. Contacta al administrador.', 'error')
-            return render_template('forgot_password.html')
-
-        # Enviar el código por correo
-        try:
-            msg = Message(
-                subject='codigo dashboard',
-                recipients=[email],
-                body=verification_code
+        success, error_message = send_password_reset_code_email(email, verification_code, expiration_time)
+        if not success:
+            cursor.execute(
+                """UPDATE password_recovery_codes
+                   SET utilizado = TRUE, fecha_uso = %s
+                   WHERE email = %s AND codigo = %s AND utilizado = FALSE""",
+                (datetime.utcnow(), email, verification_code),
             )
-            mail.send(msg)
-        except Exception as e:
-            print(f'Error enviando correo: {e}')
-            flash('Error al enviar el código. Por favor intenta de nuevo.', 'error')
+            conn.commit()
             conn.close()
+            flash(error_message, 'error')
             return render_template('forgot_password.html')
 
+        session.pop('password_reset_verified_email', None)
         conn.close()
         flash('Un código de verificación ha sido enviado a tu correo', 'success')
         return redirect(url_for('verify_code', email=email))
@@ -224,7 +274,7 @@ def forgot_password():
 
 @app.route('/verify_code', methods=['GET', 'POST'])
 def verify_code():
-    email = request.args.get('email', '').lower() if request.method == 'GET' else request.form.get('email', '').lower()
+    email = request.args.get('email', '').strip().lower() if request.method == 'GET' else request.form.get('email', '').strip().lower()
     
     if not email:
         flash('Email no proporcionado', 'error')
@@ -237,15 +287,21 @@ def verify_code():
             flash('Ingresa el código de verificación', 'error')
             return render_template('verify_code.html', email=email)
 
+        if not codigo.isdigit() or len(codigo) != 6:
+            flash('El código debe tener exactamente 6 números', 'error')
+            return render_template('verify_code.html', email=email)
+
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Buscar código válido y no expirado
+        # Buscar el último código válido, no utilizado y no expirado.
         cursor.execute(
-            '''SELECT id FROM password_recovery_codes 
+            """SELECT id FROM password_recovery_codes 
                WHERE email = %s AND codigo = %s AND utilizado = FALSE 
-               AND fecha_expiracion > %s''',
-            (email, codigo, datetime.utcnow())
+               AND fecha_expiracion > %s
+               ORDER BY fecha_creacion DESC, id DESC
+               LIMIT 1""",
+            (email, codigo, datetime.utcnow()),
         )
         code_entry = cursor.fetchone()
 
@@ -254,14 +310,15 @@ def verify_code():
             conn.close()
             return render_template('verify_code.html', email=email)
 
-        # Marcar el código como utilizado
         cursor.execute(
             'UPDATE password_recovery_codes SET utilizado = TRUE, fecha_uso = %s WHERE id = %s',
-            (datetime.utcnow(), code_entry[0])
+            (datetime.utcnow(), code_entry[0]),
         )
         conn.commit()
         conn.close()
 
+        session['password_reset_verified_email'] = email
+        session['password_reset_verified_at'] = datetime.utcnow().timestamp()
         flash('Código verificado correctamente', 'success')
         return redirect(url_for('reset_password', email=email))
 
@@ -270,27 +327,31 @@ def verify_code():
 
 @app.route('/reset_password', methods=['GET', 'POST'])
 def reset_password():
-    email = request.args.get('email', '').lower() if request.method == 'GET' else request.form.get('email', '').lower()
+    email = request.args.get('email', '').strip().lower() if request.method == 'GET' else request.form.get('email', '').strip().lower()
     
     if not email:
         flash('Email no proporcionado', 'error')
         return redirect(url_for('forgot_password'))
 
+    verified_at = session.get('password_reset_verified_at')
+    verified_email = session.get('password_reset_verified_email')
+    try:
+        verified_at = float(verified_at)
+    except (TypeError, ValueError):
+        verified_at = 0
+
+    verification_is_current = (
+        verified_email == email
+        and datetime.utcnow().timestamp() - verified_at <= PASSWORD_RESET_CODE_EXPIRATION_MINUTES * 60
+    )
+
+    if not verification_is_current:
+        session.pop('password_reset_verified_email', None)
+        session.pop('password_reset_verified_at', None)
+        flash('Debes verificar un código vigente antes de restablecer la contraseña', 'error')
+        return redirect(url_for('forgot_password'))
+
     if request.method == 'GET':
-        # Verificar que existe el código verificado recientemente
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            '''SELECT id FROM password_recovery_codes 
-               WHERE email = %s AND utilizado = TRUE 
-               AND fecha_uso > %s''',
-            (email, datetime.utcnow() - timedelta(minutes=30))
-        )
-        if not cursor.fetchone():
-            flash('El código de verificación ha expirado', 'error')
-            conn.close()
-            return redirect(url_for('forgot_password'))
-        conn.close()
         return render_template('reset_password.html', email=email)
 
     elif request.method == 'POST':
@@ -312,7 +373,6 @@ def reset_password():
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # Buscar usuario por email
         cursor.execute('SELECT id FROM usuarios WHERE email = %s', (email,))
         user = cursor.fetchone()
 
@@ -323,10 +383,15 @@ def reset_password():
 
         user_id = user[0]
         new_hash = generate_password_hash(password)
-        cursor.execute('UPDATE usuarios SET password_hash = %s WHERE id = %s', (new_hash, user_id))
+        cursor.execute(
+            'UPDATE usuarios SET password_hash = %s, requiere_cambio_password = FALSE WHERE id = %s',
+            (new_hash, user_id),
+        )
         conn.commit()
         conn.close()
 
+        session.pop('password_reset_verified_email', None)
+        session.pop('password_reset_verified_at', None)
         flash('Tu contraseña ha sido actualizada exitosamente. Ahora puedes iniciar sesión.', 'success')
         return redirect(url_for('login'))
 
