@@ -9,13 +9,11 @@
             <div class="card-body p-4">
                 <div class="text-center mb-4">
                     <h3 class="fw-bold">✓ Verificar Código</h3>
-                    <p class="text-muted">Ingresa el código de 6 dígitos enviado a tu correo</p>
-                    <p class="text-muted small"><strong>{{ email }}</strong></p>
+                    <p class="text-muted">Ingresa el código de 6 dígitos enviado por SMS</p>
+                    <p class="text-muted small"><strong>{{ masked_phone }}</strong></p>
                 </div>
 
                 <form method="POST">
-                    <input type="hidden" name="email" value="{{ email }}">
-                    
                     <div class="mb-4">
                         <label class="form-label fw-semibold"><i class="bi bi-asterisk"></i> Código de Verificación</label>
                         <input type="text" name="codigo" class="form-control form-control-lg text-center" 

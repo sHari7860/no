@@ -119,7 +119,7 @@ def init_db():
     CREATE TABLE IF NOT EXISTS usuarios (
         id SERIAL PRIMARY KEY,
         username VARCHAR(60) UNIQUE NOT NULL,
-        email VARCHAR(120) UNIQUE NOT NULL,
+        telefono VARCHAR(20) UNIQUE,
         password_hash TEXT NOT NULL,
         nombre_completo TEXT NOT NULL,
         rol VARCHAR(30) NOT NULL DEFAULT 'operador' CHECK (rol IN ('admin', 'operador')),
@@ -128,15 +128,25 @@ def init_db():
         fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     ''')
-    cursor.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS email VARCHAR(120) UNIQUE")
-    cursor.execute("UPDATE usuarios SET email = username || '@unitec.edu.co' WHERE email IS NULL")
-    cursor.execute("ALTER TABLE usuarios ALTER COLUMN email SET NOT NULL")
+    cursor.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS telefono VARCHAR(20) UNIQUE")
     cursor.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS requiere_cambio_password BOOLEAN NOT NULL DEFAULT FALSE")
+
+    cursor.execute('''
+    DO $$
+    BEGIN
+        IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'usuarios' AND column_name = 'email'
+        ) THEN
+            ALTER TABLE usuarios ALTER COLUMN email DROP NOT NULL;
+        END IF;
+    END $$;
+    ''')
 
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS password_recovery_codes (
         id SERIAL PRIMARY KEY,
-        email VARCHAR(120) NOT NULL,
+        telefono VARCHAR(20) NOT NULL,
         codigo VARCHAR(6) NOT NULL,
         fecha_expiracion TIMESTAMP NOT NULL,
         utilizado BOOLEAN NOT NULL DEFAULT FALSE,
@@ -144,6 +154,19 @@ def init_db():
         fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     ''')
+    cursor.execute("ALTER TABLE password_recovery_codes ADD COLUMN IF NOT EXISTS telefono VARCHAR(20)")
+    cursor.execute('''
+    DO $$
+    BEGIN
+        IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'password_recovery_codes' AND column_name = 'email'
+        ) THEN
+            ALTER TABLE password_recovery_codes ALTER COLUMN email DROP NOT NULL;
+        END IF;
+    END $$;
+    ''')
+
 
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS auditoria (
@@ -172,15 +195,15 @@ def init_db():
     default_user = os.getenv('APP_ADMIN_USER', 'admin')
     default_password = os.getenv('APP_ADMIN_PASSWORD', 'admin123')
     default_name = os.getenv('APP_ADMIN_NAME', 'Administrador')
-    default_email = os.getenv('APP_ADMIN_EMAIL', 'admin@unitec.edu.co')
+    default_phone = normalize_phone(os.getenv('APP_ADMIN_PHONE', '3000000000'))
 
     cursor.execute(
         '''
-        INSERT INTO usuarios (username, email, password_hash, nombre_completo, rol)
+        INSERT INTO usuarios (username, telefono, password_hash, nombre_completo, rol)
         VALUES (%s, %s, %s, %s, 'admin')
         ON CONFLICT (username) DO NOTHING
         ''',
-        (default_user, default_email, generate_password_hash(default_password), default_name),
+        (default_user, default_phone, generate_password_hash(default_password), default_name),
     )
 
     conn.commit()

@@ -1,8 +1,10 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file, session
-from flask_mail import Mail, Message
 import os
 import string
 import random
+import json
+import urllib.error
+import urllib.request
 from functools import wraps
 from io import BytesIO
 from datetime import datetime, timedelta
@@ -23,16 +25,13 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 # Configurar duración de la sesión a 30 minutos
 app.permanent_session_lifetime = timedelta(minutes=30)
 
-# Configuración de correo
-app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER', 'smtp.gmail.com')
-app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 587))
-app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'True').lower() == 'true'
-app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME', '')
-app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD', '')
-app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER') or app.config['MAIL_USERNAME'] or 'noreply@unitec.edu.co'
-app.config['MAIL_SUPPRESS_SEND'] = not (app.config['MAIL_USERNAME'] and app.config['MAIL_PASSWORD'])
-
-mail = Mail(app)
+# Configuración para envío de códigos por SMS.
+# SMS_API_URL debe apuntar al gateway real que enviará los mensajes a los números registrados.
+app.config['SMS_API_URL'] = os.getenv('SMS_API_URL', '')
+app.config['SMS_API_TOKEN'] = os.getenv('SMS_API_TOKEN', '')
+app.config['SMS_API_PHONE_FIELD'] = os.getenv('SMS_API_PHONE_FIELD', 'to')
+app.config['SMS_API_MESSAGE_FIELD'] = os.getenv('SMS_API_MESSAGE_FIELD', 'message')
+app.config['SMS_SENDER_ID'] = os.getenv('SMS_SENDER_ID', '')
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 ALLOWED_EXTENSIONS = {'xlsx', 'xls'}
@@ -163,98 +162,150 @@ def logout():
     return redirect(url_for('login'))
 
 
+def normalize_phone_number(phone):
+    """Normaliza un número telefónico conservando solo dígitos y máximo 15 caracteres."""
+    if not phone:
+        return ''
+
+    phone = ''.join(filter(str.isdigit, str(phone)))
+    if phone.startswith('57') and len(phone) > 10:
+        phone = phone[2:]
+    return phone[:15]
+
+
+def mask_phone(phone):
+    """Oculta un teléfono real para no exponerlo completo en pantalla."""
+    if not phone:
+        return ''
+    if len(phone) <= 4:
+        return '*' * len(phone)
+    return f"{'*' * (len(phone) - 4)}{phone[-4:]}"
+
+
+def send_sms_code(phone, verification_code):
+    """Envía el código de recuperación por SMS usando el gateway configurado."""
+    sms_api_url = app.config['SMS_API_URL'].strip()
+    if not sms_api_url:
+        return False, 'La configuración de SMS no está completa. Contacta al administrador.'
+
+    message = f'Tu codigo de recuperacion es: {verification_code}. Valido por 30 minutos.'
+    payload = {
+        app.config['SMS_API_PHONE_FIELD']: phone,
+        app.config['SMS_API_MESSAGE_FIELD']: message,
+    }
+    if app.config['SMS_SENDER_ID']:
+        payload['sender'] = app.config['SMS_SENDER_ID']
+
+    headers = {'Content-Type': 'application/json'}
+    if app.config['SMS_API_TOKEN']:
+        headers['Authorization'] = f"Bearer {app.config['SMS_API_TOKEN']}"
+
+    request_data = json.dumps(payload).encode('utf-8')
+    sms_request = urllib.request.Request(sms_api_url, data=request_data, headers=headers, method='POST')
+
+    try:
+        with urllib.request.urlopen(sms_request, timeout=15) as response:
+            if 200 <= response.status < 300:
+                return True, None
+            return False, 'El proveedor de SMS no confirmó el envío del código.'
+    except (urllib.error.URLError, TimeoutError) as exc:
+        print(f'Error enviando SMS: {exc.__class__.__name__}')
+        return False, 'Error al enviar el SMS. Por favor intenta de nuevo.'
+
+
 @app.route('/forgot_password', methods=['GET', 'POST'])
 def forgot_password():
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
-        
+
         if not username:
             flash('Ingresa tu usuario', 'error')
             return render_template('forgot_password.html')
 
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute('SELECT id, username, email FROM usuarios WHERE username = %s AND activo = TRUE', (username,))
+        cursor.execute('SELECT id, username, telefono FROM usuarios WHERE username = %s AND activo = TRUE', (username,))
         user = cursor.fetchone()
 
+        generic_message = 'Si la cuenta existe y tiene teléfono registrado, recibirás un código de verificación por SMS'
         if not user or not user[2]:
-            flash('Si la cuenta existe, recibirás un código de verificación por correo', 'success')
+            flash(generic_message, 'success')
             conn.close()
             return render_template('forgot_password.html')
 
-        email = user[2].strip().lower()
+        phone = normalize_phone_number(user[2])
+        if len(phone) < 7:
+            flash(generic_message, 'success')
+            conn.close()
+            return render_template('forgot_password.html')
 
-        # Generar código de 6 dígitos
         verification_code = ''.join(random.choices(string.digits, k=6))
-        user_id = user[0]
         expiration_time = datetime.utcnow() + timedelta(minutes=30)
 
-        # Guardar el código en la BD
-        cursor.execute(
-            'INSERT INTO password_recovery_codes (email, codigo, fecha_expiracion) VALUES (%s, %s, %s)',
-            (email, verification_code, expiration_time)
-        )
-        conn.commit()
-
-        if not app.config['MAIL_USERNAME'] or not app.config['MAIL_PASSWORD']:
-            conn.close()
-            flash('La configuración del correo no está completa. Contacta al administrador.', 'error')
-            return render_template('forgot_password.html')
-
-        # Enviar el código por correo
         try:
-            msg = Message(
-                subject='codigo dashboard',
-                recipients=[email],
-                body=verification_code
+            cursor.execute(
+                'INSERT INTO password_recovery_codes (telefono, codigo, fecha_expiracion) VALUES (%s, %s, %s) RETURNING id',
+                (phone, verification_code, expiration_time)
             )
-            mail.send(msg)
-        except Exception as e:
-            print(f'Error enviando correo: {e}')
+            recovery_code_id = cursor.fetchone()[0]
+            sms_sent, sms_error = send_sms_code(phone, verification_code)
+            if not sms_sent:
+                conn.rollback()
+                flash(sms_error, 'error')
+                conn.close()
+                return render_template('forgot_password.html')
+
+            conn.commit()
+        except Exception as exc:
+            conn.rollback()
+            print(f'Error preparando recuperación por SMS: {exc.__class__.__name__}')
             flash('Error al enviar el código. Por favor intenta de nuevo.', 'error')
             conn.close()
             return render_template('forgot_password.html')
 
         conn.close()
-        flash('Un código de verificación ha sido enviado a tu correo', 'success')
-        return redirect(url_for('verify_code', email=email))
+        session['recovery_code_id'] = recovery_code_id
+        session['recovery_masked_phone'] = mask_phone(phone)
+        session.pop('verified_recovery_code_id', None)
+        flash('Un código de verificación ha sido enviado por SMS al teléfono registrado', 'success')
+        return redirect(url_for('verify_code'))
 
     return render_template('forgot_password.html')
 
 
 @app.route('/verify_code', methods=['GET', 'POST'])
 def verify_code():
-    email = request.args.get('email', '').lower() if request.method == 'GET' else request.form.get('email', '').lower()
-    
-    if not email:
-        flash('Email no proporcionado', 'error')
+    recovery_code_id = session.get('recovery_code_id')
+
+    if not recovery_code_id:
+        flash('Primero solicita un código de recuperación', 'error')
         return redirect(url_for('forgot_password'))
+
+    masked_phone = session.get('recovery_masked_phone', 'teléfono registrado')
 
     if request.method == 'POST':
         codigo = request.form.get('codigo', '').strip()
 
         if not codigo:
             flash('Ingresa el código de verificación', 'error')
-            return render_template('verify_code.html', email=email)
+            return render_template('verify_code.html', masked_phone=masked_phone)
 
         conn = get_db_connection()
         cursor = conn.cursor()
-        
-        # Buscar código válido y no expirado
+
         cursor.execute(
-            '''SELECT id FROM password_recovery_codes 
-               WHERE email = %s AND codigo = %s AND utilizado = FALSE 
-               AND fecha_expiracion > %s''',
-            (email, codigo, datetime.utcnow())
+            """SELECT id FROM password_recovery_codes
+               WHERE id = %s AND codigo = %s AND utilizado = FALSE
+               AND fecha_expiracion > %s""",
+            (recovery_code_id, codigo, datetime.utcnow())
         )
         code_entry = cursor.fetchone()
 
         if not code_entry:
             flash('Código inválido o expirado', 'error')
             conn.close()
-            return render_template('verify_code.html', email=email)
+            return render_template('verify_code.html', masked_phone=masked_phone)
 
-        # Marcar el código como utilizado
         cursor.execute(
             'UPDATE password_recovery_codes SET utilizado = TRUE, fecha_uso = %s WHERE id = %s',
             (datetime.utcnow(), code_entry[0])
@@ -262,75 +313,92 @@ def verify_code():
         conn.commit()
         conn.close()
 
+        session['verified_recovery_code_id'] = code_entry[0]
         flash('Código verificado correctamente', 'success')
-        return redirect(url_for('reset_password', email=email))
+        return redirect(url_for('reset_password'))
 
-    return render_template('verify_code.html', email=email)
+    return render_template('verify_code.html', masked_phone=masked_phone)
 
 
 @app.route('/reset_password', methods=['GET', 'POST'])
 def reset_password():
-    email = request.args.get('email', '').lower() if request.method == 'GET' else request.form.get('email', '').lower()
-    
-    if not email:
-        flash('Email no proporcionado', 'error')
+    verified_recovery_code_id = session.get('verified_recovery_code_id')
+
+    if not verified_recovery_code_id:
+        flash('Verifica el código antes de restablecer la contraseña', 'error')
         return redirect(url_for('forgot_password'))
 
+    masked_phone = session.get('recovery_masked_phone', 'teléfono registrado')
+
     if request.method == 'GET':
-        # Verificar que existe el código verificado recientemente
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute(
-            '''SELECT id FROM password_recovery_codes 
-               WHERE email = %s AND utilizado = TRUE 
-               AND fecha_uso > %s''',
-            (email, datetime.utcnow() - timedelta(minutes=30))
+            """SELECT telefono FROM password_recovery_codes
+               WHERE id = %s AND utilizado = TRUE
+               AND fecha_uso > %s""",
+            (verified_recovery_code_id, datetime.utcnow() - timedelta(minutes=30))
         )
-        if not cursor.fetchone():
+        recovery_entry = cursor.fetchone()
+        if not recovery_entry:
             flash('El código de verificación ha expirado', 'error')
             conn.close()
+            session.pop('recovery_code_id', None)
+            session.pop('recovery_masked_phone', None)
+            session.pop('verified_recovery_code_id', None)
             return redirect(url_for('forgot_password'))
         conn.close()
-        return render_template('reset_password.html', email=email)
+        return render_template('reset_password.html', masked_phone=masked_phone)
 
-    elif request.method == 'POST':
+    if request.method == 'POST':
         password = request.form.get('password', '')
         password_confirm = request.form.get('password_confirm', '')
 
         if not password or not password_confirm:
             flash('Completa todos los campos', 'error')
-            return render_template('reset_password.html', email=email)
+            return render_template('reset_password.html', masked_phone=masked_phone)
 
         if password != password_confirm:
             flash('Las contraseñas no coinciden', 'error')
-            return render_template('reset_password.html', email=email)
+            return render_template('reset_password.html', masked_phone=masked_phone)
 
         if len(password) < 8:
             flash('La contraseña debe tener al menos 8 caracteres', 'error')
-            return render_template('reset_password.html', email=email)
+            return render_template('reset_password.html', masked_phone=masked_phone)
 
         conn = get_db_connection()
         cursor = conn.cursor()
+        cursor.execute(
+            """SELECT telefono FROM password_recovery_codes
+               WHERE id = %s AND utilizado = TRUE
+               AND fecha_uso > %s""",
+            (verified_recovery_code_id, datetime.utcnow() - timedelta(minutes=30))
+        )
+        recovery_entry = cursor.fetchone()
+        if not recovery_entry:
+            flash('El código de verificación ha expirado', 'error')
+            conn.close()
+            return redirect(url_for('forgot_password'))
 
-        # Buscar usuario por email
-        cursor.execute('SELECT id FROM usuarios WHERE email = %s', (email,))
+        cursor.execute('SELECT id FROM usuarios WHERE telefono = %s', (recovery_entry[0],))
         user = cursor.fetchone()
 
         if not user:
             flash('El usuario no existe', 'error')
             conn.close()
-            return render_template('reset_password.html', email=email)
+            return render_template('reset_password.html', masked_phone=masked_phone)
 
-        user_id = user[0]
-        new_hash = generate_password_hash(password)
-        cursor.execute('UPDATE usuarios SET password_hash = %s WHERE id = %s', (new_hash, user_id))
+        cursor.execute('UPDATE usuarios SET password_hash = %s WHERE id = %s', (generate_password_hash(password), user[0]))
         conn.commit()
         conn.close()
 
+        session.pop('recovery_code_id', None)
+        session.pop('recovery_masked_phone', None)
+        session.pop('verified_recovery_code_id', None)
         flash('Tu contraseña ha sido actualizada exitosamente. Ahora puedes iniciar sesión.', 'success')
         return redirect(url_for('login'))
 
-    return render_template('reset_password.html', email=email)
+    return render_template('reset_password.html', masked_phone=masked_phone)
 
 
 @app.route('/users')
@@ -343,11 +411,11 @@ def users():
     conn = get_db_connection()
     cursor = conn.cursor()
     if status == 'activos':
-        cursor.execute('SELECT id, username, email, nombre_completo, rol, activo, requiere_cambio_password, fecha_creacion FROM usuarios WHERE activo = TRUE ORDER BY fecha_creacion DESC')
+        cursor.execute('SELECT id, username, telefono, nombre_completo, rol, activo, requiere_cambio_password, fecha_creacion FROM usuarios WHERE activo = TRUE ORDER BY fecha_creacion DESC')
     elif status == 'inactivos':
-        cursor.execute('SELECT id, username, email, nombre_completo, rol, activo, requiere_cambio_password, fecha_creacion FROM usuarios WHERE activo = FALSE ORDER BY fecha_creacion DESC')
+        cursor.execute('SELECT id, username, telefono, nombre_completo, rol, activo, requiere_cambio_password, fecha_creacion FROM usuarios WHERE activo = FALSE ORDER BY fecha_creacion DESC')
     else:
-        cursor.execute('SELECT id, username, email, nombre_completo, rol, activo, requiere_cambio_password, fecha_creacion FROM usuarios ORDER BY fecha_creacion DESC')
+        cursor.execute('SELECT id, username, telefono, nombre_completo, rol, activo, requiere_cambio_password, fecha_creacion FROM usuarios ORDER BY fecha_creacion DESC')
     users_list = cursor.fetchall()
 
     cursor.execute('SELECT COUNT(*) FROM usuarios')
@@ -403,14 +471,14 @@ def toggle_user_status(user_id):
 def create_user():
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
-        email = request.form.get('email', '').strip().lower()
+        telefono = normalize_phone_number(request.form.get('telefono', '').strip())
         nombre_completo = request.form.get('nombre_completo', '').strip()
         password = request.form.get('password', '')
         password_confirm = request.form.get('confirm_password', '')
         rol = request.form.get('rol', 'operador').strip().lower()
         activo = request.form.get('activo', 'on') != 'off'
 
-        if not username or not email or not nombre_completo or not password or not password_confirm:
+        if not username or not telefono or not nombre_completo or not password or not password_confirm:
             flash('Completa todos los campos obligatorios', 'error')
             return render_template('create_user.html')
 
@@ -426,9 +494,8 @@ def create_user():
             flash('Rol inválido', 'error')
             return render_template('create_user.html')
 
-        # Validar formato de email básico
-        if '@' not in email or '.' not in email:
-            flash('El correo electrónico no es válido', 'error')
+        if len(telefono) < 7:
+            flash('El número de teléfono no es válido', 'error')
             return render_template('create_user.html')
 
         conn = get_db_connection()
@@ -441,20 +508,20 @@ def create_user():
             flash('El nombre de usuario ya existe', 'error')
             return render_template('create_user.html')
 
-        # Verificar si el email ya existe
-        cursor.execute('SELECT id FROM usuarios WHERE email = %s', (email,))
+        # Verificar si el teléfono ya existe
+        cursor.execute('SELECT id FROM usuarios WHERE telefono = %s', (telefono,))
         if cursor.fetchone():
             conn.close()
-            flash('El correo electrónico ya está registrado', 'error')
+            flash('El teléfono ya está registrado', 'error')
             return render_template('create_user.html')
 
         try:
             cursor.execute(
-                'INSERT INTO usuarios (username, email, password_hash, nombre_completo, rol, activo, requiere_cambio_password) VALUES (%s, %s, %s, %s, %s, %s, %s)',
-                (username, email, generate_password_hash(password), nombre_completo, rol, activo, True)
+                'INSERT INTO usuarios (username, telefono, password_hash, nombre_completo, rol, activo, requiere_cambio_password) VALUES (%s, %s, %s, %s, %s, %s, %s)',
+                (username, telefono, generate_password_hash(password), nombre_completo, rol, activo, True)
             )
             conn.commit()
-            log_action('CREATE_USER', f'Usuario creado: {username} ({rol}) - {email}')
+            log_action('CREATE_USER', f'Usuario creado: {username} ({rol})')
             flash('Usuario creado exitosamente. Debe cambiar su contraseña en el próximo inicio de sesión', 'success')
             conn.close()
             return redirect(url_for('users'))
@@ -474,46 +541,46 @@ def edit_user(user_id):
 
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
-        email = request.form.get('email', '').strip().lower()
+        telefono = normalize_phone_number(request.form.get('telefono', '').strip())
         nombre_completo = request.form.get('nombre_completo', '').strip()
         rol = request.form.get('rol', 'operador').strip().lower()
         activo = request.form.get('activo') == 'on'
         require_password_change = request.form.get('require_password_change') == 'on'
 
-        if not username or not email or not nombre_completo:
+        if not username or not telefono or not nombre_completo:
             flash('Completa todos los campos obligatorios', 'error')
-            cursor.execute('SELECT id, username, email, nombre_completo, rol, activo, requiere_cambio_password FROM usuarios WHERE id = %s', (user_id,))
+            cursor.execute('SELECT id, username, telefono, nombre_completo, rol, activo, requiere_cambio_password FROM usuarios WHERE id = %s', (user_id,))
             user = cursor.fetchone()
             conn.close()
             return render_template('edit_user.html', user=user)
 
-        if '@' not in email or '.' not in email:
-            flash('El correo electrónico no es válido', 'error')
-            cursor.execute('SELECT id, username, email, nombre_completo, rol, activo, requiere_cambio_password FROM usuarios WHERE id = %s', (user_id,))
+        if len(telefono) < 7:
+            flash('El número de teléfono no es válido', 'error')
+            cursor.execute('SELECT id, username, telefono, nombre_completo, rol, activo, requiere_cambio_password FROM usuarios WHERE id = %s', (user_id,))
             user = cursor.fetchone()
             conn.close()
             return render_template('edit_user.html', user=user)
 
         if rol not in ['admin', 'operador']:
             flash('Rol inválido', 'error')
-            cursor.execute('SELECT id, username, email, nombre_completo, rol, activo, requiere_cambio_password FROM usuarios WHERE id = %s', (user_id,))
+            cursor.execute('SELECT id, username, telefono, nombre_completo, rol, activo, requiere_cambio_password FROM usuarios WHERE id = %s', (user_id,))
             user = cursor.fetchone()
             conn.close()
             return render_template('edit_user.html', user=user)
 
-        # Verificar que email no esté en uso por otro usuario
-        cursor.execute('SELECT id FROM usuarios WHERE email = %s AND id != %s', (email, user_id))
+        # Verificar que el teléfono no esté en uso por otro usuario
+        cursor.execute('SELECT id FROM usuarios WHERE telefono = %s AND id != %s', (telefono, user_id))
         if cursor.fetchone():
-            flash('El correo electrónico ya está registrado por otro usuario', 'error')
-            cursor.execute('SELECT id, username, email, nombre_completo, rol, activo, requiere_cambio_password FROM usuarios WHERE id = %s', (user_id,))
+            flash('El teléfono ya está registrado por otro usuario', 'error')
+            cursor.execute('SELECT id, username, telefono, nombre_completo, rol, activo, requiere_cambio_password FROM usuarios WHERE id = %s', (user_id,))
             user = cursor.fetchone()
             conn.close()
             return render_template('edit_user.html', user=user)
 
         try:
             cursor.execute(
-                'UPDATE usuarios SET username = %s, email = %s, nombre_completo = %s, rol = %s, activo = %s, requiere_cambio_password = %s WHERE id = %s',
-                (username, email, nombre_completo, rol, activo, require_password_change, user_id)
+                'UPDATE usuarios SET username = %s, telefono = %s, nombre_completo = %s, rol = %s, activo = %s, requiere_cambio_password = %s WHERE id = %s',
+                (username, telefono, nombre_completo, rol, activo, require_password_change, user_id)
             )
             log_action('UPDATE_USER', f'Usuario actualizado: {username}')
             if require_password_change:
@@ -529,12 +596,12 @@ def edit_user(user_id):
             flash(f'Error al actualizar usuario: {str(e)}', 'error')
             conn = get_db_connection()
             cursor = conn.cursor()
-            cursor.execute('SELECT id, username, email, nombre_completo, rol, activo, requiere_cambio_password FROM usuarios WHERE id = %s', (user_id,))
+            cursor.execute('SELECT id, username, telefono, nombre_completo, rol, activo, requiere_cambio_password FROM usuarios WHERE id = %s', (user_id,))
             user = cursor.fetchone()
             conn.close()
             return render_template('edit_user.html', user=user)
 
-    cursor.execute('SELECT id, username, email, nombre_completo, rol, activo, requiere_cambio_password FROM usuarios WHERE id = %s', (user_id,))
+    cursor.execute('SELECT id, username, telefono, nombre_completo, rol, activo, requiere_cambio_password FROM usuarios WHERE id = %s', (user_id,))
     user = cursor.fetchone()
     conn.close()
 
@@ -544,36 +611,6 @@ def edit_user(user_id):
 
     return render_template('edit_user.html', user=user)
 
-
-def send_verification_email(email, username, verification_code, subject):
-    """Envía un correo de verificación con código al usuario."""
-    if not app.config['MAIL_USERNAME'] or not app.config['MAIL_PASSWORD']:
-        return False, 'La configuración del correo no está completa. Contacta al administrador.'
-
-    try:
-        msg = Message(
-            subject=subject,
-            recipients=[email],
-            html=f'''
-            <html>
-                <body style="font-family: Arial, sans-serif;">
-                    <h2>Verificación de cambio de contraseña</h2>
-                    <p>Hola {username},</p>
-                    <p>Tu código de verificación es:</p>
-                    <h1 style="color: #007bff; letter-spacing: 5px;">{verification_code}</h1>
-                    <p>Este código es válido por 30 minutos.</p>
-                    <p>Si no solicitaste este cambio, ignora este mensaje.</p>
-                    <hr>
-                    <p style="color: #666; font-size: 12px;">UNITEC - Sistema de Gestión</p>
-                </body>
-            </html>
-            '''
-        )
-        mail.send(msg)
-        return True, None
-    except Exception as e:
-        print(f'Error enviando correo: {e}')
-        return False, 'Error al enviar el correo. Por favor intenta de nuevo.'
 
 
 @app.route('/change_password', methods=['GET', 'POST'])

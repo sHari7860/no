@@ -1,136 +1,45 @@
-# ✅ Sistema de Restablecimiento de Contraseña - Implementado
+# Sistema de Restablecimiento de Contraseña por SMS
 
-## 📋 Resumen de Cambios
+## Resumen
 
-Se ha implementado un **sistema completo y seguro de restablecimiento de contraseña** para usuarios que olviden sus credenciales.
+El sistema de recuperación de contraseña usa el teléfono registrado del usuario y envía un código de 6 dígitos por SMS. La recuperación ya no depende del correo electrónico.
 
----
+## Componentes
 
-## 🔧 Componentes Implementados
+### Base de datos
+- `usuarios.telefono`: número telefónico registrado para recibir códigos.
+- `password_recovery_codes.telefono`: teléfono asociado al código de recuperación.
+- `password_recovery_codes.codigo`: código de 6 dígitos.
+- `password_recovery_codes.fecha_expiracion`: expiración del código.
+- `password_recovery_codes.utilizado` y `fecha_uso`: control de códigos usados.
 
-### 1️⃣ **Base de Datos**
-- Nueva tabla `password_reset_tokens` para gestionar solicitudes de reset
-- Campos incluyen: usuario, token único, fecha de expiración, estado de uso
-- Tokens válidos por **24 horas** para mayor seguridad
+### Configuración SMS
 
-### 2️⃣ **Rutas de Autenticación (Backend)**
-| Ruta | Método | Descripción |
-|------|--------|-------------|
-| `/forgot_password` | GET/POST | Solicita nombre de usuario y genera enlace de reset |
-| `/reset_password/<token>` | GET/POST | Valida token y permite cambiar contraseña |
+El envío se realiza mediante un gateway HTTP configurado por variables de entorno:
 
-### 3️⃣ **Interfaces de Usuario (Frontend)**
-- **Login actualizado**: Enlace "Recupérala aquí" en la página de login
-- **forgot_password.html**: Formulario para solicitar reset con copia de enlace
-- **reset_password.html**: Formulario para crear nueva contraseña con validación en tiempo real
+- `SMS_API_URL`: URL del proveedor/gateway SMS.
+- `SMS_API_TOKEN`: token Bearer opcional.
+- `SMS_API_PHONE_FIELD`: nombre del campo JSON para el teléfono. Por defecto: `to`.
+- `SMS_API_MESSAGE_FIELD`: nombre del campo JSON para el mensaje. Por defecto: `message`.
+- `SMS_SENDER_ID`: identificador del remitente opcional.
 
-### 4️⃣ **Características de Seguridad**
-✅ Tokens criptográficamente seguros (32 caracteres aleatorios)  
-✅ Expiración de 24 horas automática  
-✅ Tokens de un solo uso (no reutilizables)  
-✅ No revela si usuario existe (previene enumeración)  
-✅ Hash seguro de contraseña con `generate_password_hash`  
-✅ Validaciones en cliente y servidor  
+El sistema no imprime el código ni el teléfono completo en pantalla, porque los números registrados son reales.
 
----
+## Flujo
 
-## 🚀 Flujo de Usuario
+1. El usuario solicita recuperación con su nombre de usuario.
+2. El sistema busca el usuario activo y su teléfono registrado.
+3. Se genera un código aleatorio de 6 dígitos válido por 30 minutos.
+4. El código se guarda en `password_recovery_codes` y se envía por SMS.
+5. El usuario ingresa el código recibido.
+6. El sistema valida que el teléfono, el código, el estado no usado y la expiración coincidan.
+7. Si el código es válido, el usuario puede registrar una nueva contraseña.
+8. La contraseña se guarda con `generate_password_hash`.
 
-```
-1. Usuario olvida contraseña
-   ↓
-2. Click en "¿Olvidaste tu contraseña?"
-   ↓
-3. Ingresa su usuario
-   ↓
-4. Sistema genera enlace de 24 horas
-   ↓
-5. Usuario copia el enlace
-   ↓
-6. Abre el enlace en navegador
-   ↓
-7. Ingresa nueva contraseña (2 veces)
-   ↓
-8. Contraseña actualizada ✅
-   ↓
-9. Usuario inicia sesión con nueva contraseña
-```
+## Seguridad
 
----
-
-## 📁 Archivos Modificados/Creados
-
-| Archivo | Cambio |
-|---------|--------|
-| `models.py` | Tabla `password_reset_tokens` agregada |
-| `app.py` | Rutas `/forgot_password` y `/reset_password` + middleware actualizado |
-| `templates/login.html` | Enlace a recuperación de contraseña |
-| `templates/forgot_password.html` | ⭐ NUEVO - Solicita usuario |
-| `templates/reset_password.html` | ⭐ NUEVO - Cambia contraseña |
-| `HELP_PASSWORD_RESET.md` | ⭐ NUEVO - Guía para usuarios |
-
----
-
-## 🔐 Validaciones Implementadas
-
-### Durante solicitud de reset:
-- Usuario debe existir y estar activo
-- Se genera token único y válido por 24 horas
-
-### Durante cambio de contraseña:
-- Token debe ser válido y no expirado
-- Token no puede haber sido usado antes
-- Contraseñas deben coincidir exactamente
-- Contraseña mínimo 6 caracteres
-- Uso de hash seguro (bcrypt-style)
-
----
-
-## 💡 Flujo de Seguridad
-
-1. **Generación de Token**: `secrets.token_urlsafe(32)` - Criptográficamente seguro
-2. **Almacenamiento**: Token en BD con timestamp de expiración
-3. **Validación**: Verifica token, expiración y uso anterior
-4. **Actualización**: Genera nuevo hash de contraseña con `generate_password_hash`
-5. **Marcado**: Token se marca como "utilizado" para evitar reutilización
-
----
-
-## 🎯 Próximos Pasos Opcionales (En Producción)
-
-Para mejorar aún más el sistema, considera:
-
-1. **Notificaciones por Correo**:
-   - Implementar envío de enlace por email (usando `smtplib`)
-   - Notificar al usuario si hay intento fallido de reset
-
-2. **Rate Limiting**:
-   - Limitar intentos de reset por usuario/IP
-   - Prevenir abuso de generación de tokens
-
-3. **Auditoría**:
-   - Registrar cuándo se solicita reset
-   - Registrar cambios exitosos/fallidos
-
-4. **Recuperación Adicional**:
-   - Agregar preguntas de seguridad
-   - Enviar código OTP (One-Time Password)
-
----
-
-## 🧪 Cómo Probar
-
-1. Ve a la página de login
-2. Haz clic en "¿Olvidaste tu contraseña? Recupérala aquí"
-3. Ingresa tu usuario (ej: "admin")
-4. Copia el enlace mostrado
-5. Abre el enlace
-6. Ingresa una nueva contraseña
-7. Intenta iniciar sesión con las nuevas credenciales ✅
-
----
-
-## 📚 Documentación para Usuario Final
-
-Consulta el archivo `HELP_PASSWORD_RESET.md` para la guía completa de usuario.
-
+- Mensajes genéricos para evitar enumeración de usuarios.
+- Código de un solo uso.
+- Expiración de 30 minutos.
+- Teléfono enmascarado en las pantallas de verificación y restablecimiento.
+- No se envía ni expone el código por correo electrónico.
