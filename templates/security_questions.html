@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}Configurar Preguntas de Seguridad{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i>
+        </a>
+        <div>
+            <h2 class="fw-bold mb-1">Preguntas de Seguridad</h2>
+            <p class="text-muted mb-0">Configura las preguntas que se usarán al recuperar contraseña.</p>
+        </div>
+    </div>
+
+    <div class="row justify-content-center">
+        <div class="col-lg-7 col-xl-6">
+            <div class="card shadow-sm border-0 rounded-4">
+                <div class="card-body p-4">
+                    <form method="POST" autocomplete="off">
+                        <div class="mb-3">
+                            <label for="question_1" class="form-label fw-semibold">Pregunta 1 *</label>
+                            <input list="security_question_options" type="text" class="form-control" id="question_1" name="question_1" required value="{{ request.form.get('question_1', (questions[0] or '') if questions else '') }}">
+                        </div>
+
+                        <div class="mb-4">
+                            <label for="answer_1" class="form-label fw-semibold">Respuesta 1 *</label>
+                            <input type="password" class="form-control" id="answer_1" name="answer_1" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="question_2" class="form-label fw-semibold">Pregunta 2 *</label>
+                            <input list="security_question_options" type="text" class="form-control" id="question_2" name="question_2" required value="{{ request.form.get('question_2', (questions[1] or '') if questions else '') }}">
+                        </div>
+
+                        <div class="mb-4">
+                            <label for="answer_2" class="form-label fw-semibold">Respuesta 2 *</label>
+                            <input type="password" class="form-control" id="answer_2" name="answer_2" required>
+                            <div class="form-text">Guarda respuestas que recuerdes. No se mostrarán nuevamente.</div>
+                        </div>
+
+                        <datalist id="security_question_options">
+                            <option value="¿Cuál es el nombre de tu primera mascota?">
+                            <option value="¿En qué ciudad naciste?">
+                            <option value="¿Cuál es el nombre de tu colegio?">
+                            <option value="¿Cuál es tu comida favorita?">
+                            <option value="¿Cuál es el segundo nombre de tu madre?">
+                        </datalist>
+
+                        <div class="d-flex gap-2 justify-content-end">
+                            <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+                                <i class="bi bi-x-circle"></i> Cancelar
+                            </a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-check-circle"></i> Guardar preguntas
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

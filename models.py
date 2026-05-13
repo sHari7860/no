@@ -19,17 +19,11 @@ def normalize_text(text):
 
 
 def normalize_phone(phone):
-    """Normaliza números de teléfono."""
+    """Conserva el número de teléfono sin validar ni modificar su formato."""
     if phone is None:
         return ""
 
-    phone = str(phone)
-    phone = ''.join(filter(str.isdigit, phone))
-
-    if phone.startswith('57') and len(phone) > 10:
-        phone = phone[2:]
-
-    return phone[:15]
+    return str(phone).strip()
 
 
 def init_db():
@@ -63,14 +57,17 @@ def init_db():
         documento VARCHAR(50) NOT NULL,
         nombre_completo TEXT NOT NULL,
         nombre_normalizado TEXT NOT NULL,
-        telefono_normalizado VARCHAR(20),
-        telefono_adicional VARCHAR(20),
+        telefono_normalizado TEXT,
+        telefono_adicional TEXT,
         correo_personal TEXT,
         correo_institucional TEXT,
         fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE (documento, nombre_normalizado)
     )
     ''')
+
+    cursor.execute("ALTER TABLE estudiantes ALTER COLUMN telefono_normalizado TYPE TEXT")
+    cursor.execute("ALTER TABLE estudiantes ALTER COLUMN telefono_adicional TYPE TEXT")
 
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS categorias (
@@ -125,6 +122,10 @@ def init_db():
         rol VARCHAR(30) NOT NULL DEFAULT 'operador' CHECK (rol IN ('admin', 'operador')),
         activo BOOLEAN NOT NULL DEFAULT TRUE,
         requiere_cambio_password BOOLEAN NOT NULL DEFAULT FALSE,
+        pregunta_seguridad_1 TEXT,
+        respuesta_seguridad_hash_1 TEXT,
+        pregunta_seguridad_2 TEXT,
+        respuesta_seguridad_hash_2 TEXT,
         fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     ''')
@@ -132,6 +133,10 @@ def init_db():
     cursor.execute("UPDATE usuarios SET email = username || '@unitec.edu.co' WHERE email IS NULL")
     cursor.execute("ALTER TABLE usuarios ALTER COLUMN email SET NOT NULL")
     cursor.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS requiere_cambio_password BOOLEAN NOT NULL DEFAULT FALSE")
+    cursor.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS pregunta_seguridad_1 TEXT")
+    cursor.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS respuesta_seguridad_hash_1 TEXT")
+    cursor.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS pregunta_seguridad_2 TEXT")
+    cursor.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS respuesta_seguridad_hash_2 TEXT")
 
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS password_recovery_codes (
@@ -142,6 +147,16 @@ def init_db():
         utilizado BOOLEAN NOT NULL DEFAULT FALSE,
         fecha_uso TIMESTAMP,
         fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS password_recovery_attempts (
+        id SERIAL PRIMARY KEY,
+        username VARCHAR(60) UNIQUE NOT NULL,
+        intentos INTEGER NOT NULL DEFAULT 0,
+        bloqueado_hasta TIMESTAMP,
+        fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     ''')
 

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}Preguntas de Seguridad{% endblock %}
+
+{% block content %}
+<div class="container d-flex align-items-center justify-content-center" style="min-height: 90vh;">
+    <div class="col-md-6 col-lg-5">
+        <div class="card shadow-lg border-0 rounded-4">
+            <div class="card-body p-4">
+                <div class="text-center mb-4">
+                    <h3 class="fw-bold">Preguntas de Seguridad</h3>
+                    <p class="text-muted mb-1">Responde las preguntas configuradas para el usuario.</p>
+                    <p class="text-muted small"><strong>{{ user[1] }}</strong></p>
+                </div>
+
+                <form method="POST" autocomplete="off">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">{{ user[2] }}</label>
+                        <input type="password" name="answer_1" class="form-control" placeholder="Respuesta" required>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold">{{ user[4] }}</label>
+                        <input type="password" name="answer_2" class="form-control" placeholder="Respuesta" required>
+                        <small class="text-muted d-block mt-2">Tienes máximo 3 intentos. Si fallas, deberás esperar 30 minutos.</small>
+                    </div>
+
+                    <div class="d-grid mb-3">
+                        <button type="submit" class="btn btn-primary btn-lg rounded-3">
+                            Validar respuestas
+                        </button>
+                    </div>
+
+                    <div class="text-center">
+                        <small class="text-muted">
+                            <a href="{{ url_for('forgot_password') }}" class="text-decoration-none">Volver</a>
+                        </small>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

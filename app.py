@@ -1,8 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file, session
-from flask_mail import Mail, Message
+from flask_mail import Mail
 import os
-import string
-import random
 from functools import wraps
 from io import BytesIO
 from datetime import datetime, timedelta
@@ -37,6 +35,60 @@ mail = Mail(app)
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 ALLOWED_EXTENSIONS = {'xlsx', 'xls'}
 
+PASSWORD_RECOVERY_MAX_ATTEMPTS = 3
+PASSWORD_RECOVERY_LOCK_MINUTES = 30
+
+
+def normalize_security_answer(answer):
+    """Normaliza una respuesta de seguridad antes de validarla o almacenarla."""
+    return ' '.join((answer or '').strip().lower().split())
+
+
+def get_recovery_attempt(cursor, username):
+    cursor.execute(
+        'SELECT id, intentos, bloqueado_hasta FROM password_recovery_attempts WHERE username = %s',
+        (username,),
+    )
+    return cursor.fetchone()
+
+
+def is_recovery_locked(attempt):
+    return bool(attempt and attempt[2] and attempt[2] > datetime.utcnow())
+
+
+def reset_recovery_attempts(cursor, username):
+    cursor.execute(
+        'DELETE FROM password_recovery_attempts WHERE username = %s',
+        (username,),
+    )
+
+
+def register_failed_recovery_attempt(cursor, username):
+    attempt = get_recovery_attempt(cursor, username)
+    now = datetime.utcnow()
+
+    if attempt and attempt[2] and attempt[2] <= now:
+        cursor.execute(
+            'UPDATE password_recovery_attempts SET intentos = 0, bloqueado_hasta = NULL, fecha_actualizacion = %s WHERE username = %s',
+            (now, username),
+        )
+        attempt = (attempt[0], 0, None)
+
+    attempts = (attempt[1] if attempt else 0) + 1
+    blocked_until = now + timedelta(minutes=PASSWORD_RECOVERY_LOCK_MINUTES) if attempts >= PASSWORD_RECOVERY_MAX_ATTEMPTS else None
+
+    cursor.execute(
+        '''
+        INSERT INTO password_recovery_attempts (username, intentos, bloqueado_hasta, fecha_actualizacion)
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (username)
+        DO UPDATE SET intentos = EXCLUDED.intentos,
+                      bloqueado_hasta = EXCLUDED.bloqueado_hasta,
+                      fecha_actualizacion = EXCLUDED.fecha_actualizacion
+        ''',
+        (username, attempts, blocked_until, now),
+    )
+    return attempts, blocked_until
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -75,7 +127,7 @@ def role_required(*allowed_roles):
 @app.before_request
 def require_login():
     # Permitir acceso a rutas de login y recursos estáticos sin autenticación
-    exempt_endpoints = {'login', 'logout', 'forgot_password', 'verify_code', 'reset_password', 'static'}
+    exempt_endpoints = {'login', 'logout', 'forgot_password', 'answer_security_questions', 'verify_code', 'reset_password', 'static'}
     endpoint = request.endpoint
     if endpoint in exempt_endpoints or endpoint is None:
         return
@@ -167,170 +219,191 @@ def logout():
 def forgot_password():
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
-        
+
         if not username:
             flash('Ingresa tu usuario', 'error')
             return render_template('forgot_password.html')
 
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute('SELECT id, username, email FROM usuarios WHERE username = %s AND activo = TRUE', (username,))
+        cursor.execute(
+            '''SELECT id, username, pregunta_seguridad_1, pregunta_seguridad_2
+               FROM usuarios
+               WHERE username = %s AND activo = TRUE''',
+            (username,),
+        )
         user = cursor.fetchone()
 
-        if not user or not user[2]:
-            flash('Si la cuenta existe, recibirás un código de verificación por correo', 'success')
+        if not user:
             conn.close()
+            flash('Si la cuenta existe y tiene preguntas configuradas, podrás continuar con la recuperación.', 'success')
             return render_template('forgot_password.html')
 
-        email = user[2].strip().lower()
-
-        # Generar código de 6 dígitos
-        verification_code = ''.join(random.choices(string.digits, k=6))
-        user_id = user[0]
-        expiration_time = datetime.utcnow() + timedelta(minutes=30)
-
-        # Guardar el código en la BD
-        cursor.execute(
-            'INSERT INTO password_recovery_codes (email, codigo, fecha_expiracion) VALUES (%s, %s, %s)',
-            (email, verification_code, expiration_time)
-        )
-        conn.commit()
-
-        if not app.config['MAIL_USERNAME'] or not app.config['MAIL_PASSWORD']:
+        attempt = get_recovery_attempt(cursor, username)
+        if is_recovery_locked(attempt):
+            blocked_until = attempt[2].strftime('%H:%M')
             conn.close()
-            flash('La configuración del correo no está completa. Contacta al administrador.', 'error')
+            flash(f'Demasiados intentos fallidos. Intenta nuevamente después de las {blocked_until} UTC.', 'error')
             return render_template('forgot_password.html')
 
-        # Enviar el código por correo
-        try:
-            msg = Message(
-                subject='codigo dashboard',
-                recipients=[email],
-                body=verification_code
-            )
-            mail.send(msg)
-        except Exception as e:
-            print(f'Error enviando correo: {e}')
-            flash('Error al enviar el código. Por favor intenta de nuevo.', 'error')
+        if not user[2] or not user[3]:
             conn.close()
+            flash('Este usuario aún no tiene preguntas de seguridad configuradas. Contacta al administrador.', 'error')
             return render_template('forgot_password.html')
 
+        session['recovery_pending_user_id'] = user[0]
+        session['recovery_pending_username'] = user[1]
         conn.close()
-        flash('Un código de verificación ha sido enviado a tu correo', 'success')
-        return redirect(url_for('verify_code', email=email))
+        return redirect(url_for('answer_security_questions'))
 
     return render_template('forgot_password.html')
 
 
-@app.route('/verify_code', methods=['GET', 'POST'])
-def verify_code():
-    email = request.args.get('email', '').lower() if request.method == 'GET' else request.form.get('email', '').lower()
-    
-    if not email:
-        flash('Email no proporcionado', 'error')
+@app.route('/answer_security_questions', methods=['GET', 'POST'])
+def answer_security_questions():
+    user_id = session.get('recovery_pending_user_id')
+    username = session.get('recovery_pending_username')
+
+    if not user_id or not username:
+        flash('Ingresa tu usuario para iniciar la recuperación.', 'error')
+        return redirect(url_for('forgot_password'))
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        '''SELECT id, username, pregunta_seguridad_1, respuesta_seguridad_hash_1,
+                  pregunta_seguridad_2, respuesta_seguridad_hash_2
+           FROM usuarios
+           WHERE id = %s AND username = %s AND activo = TRUE''',
+        (user_id, username),
+    )
+    user = cursor.fetchone()
+
+    if not user or not user[2] or not user[3] or not user[4] or not user[5]:
+        conn.close()
+        session.pop('recovery_pending_user_id', None)
+        session.pop('recovery_pending_username', None)
+        flash('No fue posible validar las preguntas de seguridad.', 'error')
+        return redirect(url_for('forgot_password'))
+
+    attempt = get_recovery_attempt(cursor, username)
+    if is_recovery_locked(attempt):
+        blocked_until = attempt[2].strftime('%H:%M')
+        conn.close()
+        flash(f'Demasiados intentos fallidos. Intenta nuevamente después de las {blocked_until} UTC.', 'error')
         return redirect(url_for('forgot_password'))
 
     if request.method == 'POST':
-        codigo = request.form.get('codigo', '').strip()
+        answer_1 = normalize_security_answer(request.form.get('answer_1', ''))
+        answer_2 = normalize_security_answer(request.form.get('answer_2', ''))
 
-        if not codigo:
-            flash('Ingresa el código de verificación', 'error')
-            return render_template('verify_code.html', email=email)
-
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Buscar código válido y no expirado
-        cursor.execute(
-            '''SELECT id FROM password_recovery_codes 
-               WHERE email = %s AND codigo = %s AND utilizado = FALSE 
-               AND fecha_expiracion > %s''',
-            (email, codigo, datetime.utcnow())
-        )
-        code_entry = cursor.fetchone()
-
-        if not code_entry:
-            flash('Código inválido o expirado', 'error')
+        if not answer_1 or not answer_2:
             conn.close()
-            return render_template('verify_code.html', email=email)
+            flash('Responde todas las preguntas de seguridad.', 'error')
+            return render_template('answer_security_questions.html', user=user)
 
-        # Marcar el código como utilizado
-        cursor.execute(
-            'UPDATE password_recovery_codes SET utilizado = TRUE, fecha_uso = %s WHERE id = %s',
-            (datetime.utcnow(), code_entry[0])
+        answers_ok = (
+            check_password_hash(user[3], answer_1) and
+            check_password_hash(user[5], answer_2)
         )
+
+        if not answers_ok:
+            attempts, blocked_until = register_failed_recovery_attempt(cursor, username)
+            conn.commit()
+            conn.close()
+
+            if blocked_until:
+                flash('Respuestas incorrectas. Alcanzaste el límite de intentos; podrás intentar de nuevo en 30 minutos.', 'error')
+            else:
+                remaining = PASSWORD_RECOVERY_MAX_ATTEMPTS - attempts
+                flash(f'Respuestas incorrectas. Te quedan {remaining} intento(s).', 'error')
+            return render_template('answer_security_questions.html', user=user)
+
+        reset_recovery_attempts(cursor, username)
         conn.commit()
         conn.close()
 
-        flash('Código verificado correctamente', 'success')
-        return redirect(url_for('reset_password', email=email))
+        session.pop('recovery_pending_user_id', None)
+        session.pop('recovery_pending_username', None)
+        session['password_reset_user_id'] = user[0]
+        session['password_reset_username'] = user[1]
+        session['password_reset_expires'] = (datetime.utcnow() + timedelta(minutes=30)).timestamp()
+        flash('Preguntas verificadas correctamente. Ingresa tu nueva contraseña.', 'success')
+        return redirect(url_for('reset_password'))
 
-    return render_template('verify_code.html', email=email)
+    conn.close()
+    return render_template('answer_security_questions.html', user=user)
+
+
+@app.route('/verify_code', methods=['GET', 'POST'])
+def verify_code():
+    flash('La recuperación por correo fue reemplazada por preguntas de seguridad.', 'warning')
+    return redirect(url_for('forgot_password'))
 
 
 @app.route('/reset_password', methods=['GET', 'POST'])
 def reset_password():
-    email = request.args.get('email', '').lower() if request.method == 'GET' else request.form.get('email', '').lower()
-    
-    if not email:
-        flash('Email no proporcionado', 'error')
+    user_id = session.get('password_reset_user_id')
+    username = session.get('password_reset_username')
+    expires = session.get('password_reset_expires')
+
+    if not user_id or not username or not expires:
+        flash('Valida tus preguntas de seguridad antes de restablecer la contraseña.', 'error')
         return redirect(url_for('forgot_password'))
 
-    if request.method == 'GET':
-        # Verificar que existe el código verificado recientemente
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            '''SELECT id FROM password_recovery_codes 
-               WHERE email = %s AND utilizado = TRUE 
-               AND fecha_uso > %s''',
-            (email, datetime.utcnow() - timedelta(minutes=30))
-        )
-        if not cursor.fetchone():
-            flash('El código de verificación ha expirado', 'error')
-            conn.close()
-            return redirect(url_for('forgot_password'))
-        conn.close()
-        return render_template('reset_password.html', email=email)
+    try:
+        expires_ts = float(expires)
+    except Exception:
+        expires_ts = 0
 
-    elif request.method == 'POST':
+    if datetime.utcnow().timestamp() > expires_ts:
+        session.pop('password_reset_user_id', None)
+        session.pop('password_reset_username', None)
+        session.pop('password_reset_expires', None)
+        flash('La autorización para restablecer la contraseña expiró. Intenta nuevamente.', 'error')
+        return redirect(url_for('forgot_password'))
+
+    if request.method == 'POST':
         password = request.form.get('password', '')
         password_confirm = request.form.get('password_confirm', '')
 
         if not password or not password_confirm:
             flash('Completa todos los campos', 'error')
-            return render_template('reset_password.html', email=email)
+            return render_template('reset_password.html', username=username)
 
         if password != password_confirm:
             flash('Las contraseñas no coinciden', 'error')
-            return render_template('reset_password.html', email=email)
+            return render_template('reset_password.html', username=username)
 
         if len(password) < 8:
             flash('La contraseña debe tener al menos 8 caracteres', 'error')
-            return render_template('reset_password.html', email=email)
+            return render_template('reset_password.html', username=username)
 
         conn = get_db_connection()
         cursor = conn.cursor()
-
-        # Buscar usuario por email
-        cursor.execute('SELECT id FROM usuarios WHERE email = %s', (email,))
+        cursor.execute('SELECT id FROM usuarios WHERE id = %s AND username = %s AND activo = TRUE', (user_id, username))
         user = cursor.fetchone()
 
         if not user:
-            flash('El usuario no existe', 'error')
             conn.close()
-            return render_template('reset_password.html', email=email)
+            flash('El usuario no existe o está inactivo', 'error')
+            return redirect(url_for('forgot_password'))
 
-        user_id = user[0]
-        new_hash = generate_password_hash(password)
-        cursor.execute('UPDATE usuarios SET password_hash = %s WHERE id = %s', (new_hash, user_id))
+        cursor.execute(
+            'UPDATE usuarios SET password_hash = %s, requiere_cambio_password = FALSE WHERE id = %s',
+            (generate_password_hash(password), user_id),
+        )
         conn.commit()
         conn.close()
+
+        session.pop('password_reset_user_id', None)
+        session.pop('password_reset_username', None)
+        session.pop('password_reset_expires', None)
 
         flash('Tu contraseña ha sido actualizada exitosamente. Ahora puedes iniciar sesión.', 'success')
         return redirect(url_for('login'))
 
-    return render_template('reset_password.html', email=email)
+    return render_template('reset_password.html', username=username)
 
 
 @app.route('/users')
@@ -403,7 +476,7 @@ def toggle_user_status(user_id):
 def create_user():
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
-        email = request.form.get('email', '').strip().lower()
+        email = request.form.get('email', '').strip()
         nombre_completo = request.form.get('nombre_completo', '').strip()
         password = request.form.get('password', '')
         password_confirm = request.form.get('confirm_password', '')
@@ -426,10 +499,6 @@ def create_user():
             flash('Rol inválido', 'error')
             return render_template('create_user.html')
 
-        # Validar formato de email básico
-        if '@' not in email or '.' not in email:
-            flash('El correo electrónico no es válido', 'error')
-            return render_template('create_user.html')
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -474,7 +543,7 @@ def edit_user(user_id):
 
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
-        email = request.form.get('email', '').strip().lower()
+        email = request.form.get('email', '').strip()
         nombre_completo = request.form.get('nombre_completo', '').strip()
         rol = request.form.get('rol', 'operador').strip().lower()
         activo = request.form.get('activo') == 'on'
@@ -487,12 +556,6 @@ def edit_user(user_id):
             conn.close()
             return render_template('edit_user.html', user=user)
 
-        if '@' not in email or '.' not in email:
-            flash('El correo electrónico no es válido', 'error')
-            cursor.execute('SELECT id, username, email, nombre_completo, rol, activo, requiere_cambio_password FROM usuarios WHERE id = %s', (user_id,))
-            user = cursor.fetchone()
-            conn.close()
-            return render_template('edit_user.html', user=user)
 
         if rol not in ['admin', 'operador']:
             flash('Rol inválido', 'error')
@@ -544,36 +607,6 @@ def edit_user(user_id):
 
     return render_template('edit_user.html', user=user)
 
-
-def send_verification_email(email, username, verification_code, subject):
-    """Envía un correo de verificación con código al usuario."""
-    if not app.config['MAIL_USERNAME'] or not app.config['MAIL_PASSWORD']:
-        return False, 'La configuración del correo no está completa. Contacta al administrador.'
-
-    try:
-        msg = Message(
-            subject=subject,
-            recipients=[email],
-            html=f'''
-            <html>
-                <body style="font-family: Arial, sans-serif;">
-                    <h2>Verificación de cambio de contraseña</h2>
-                    <p>Hola {username},</p>
-                    <p>Tu código de verificación es:</p>
-                    <h1 style="color: #007bff; letter-spacing: 5px;">{verification_code}</h1>
-                    <p>Este código es válido por 30 minutos.</p>
-                    <p>Si no solicitaste este cambio, ignora este mensaje.</p>
-                    <hr>
-                    <p style="color: #666; font-size: 12px;">UNITEC - Sistema de Gestión</p>
-                </body>
-            </html>
-            '''
-        )
-        mail.send(msg)
-        return True, None
-    except Exception as e:
-        print(f'Error enviando correo: {e}')
-        return False, 'Error al enviar el correo. Por favor intenta de nuevo.'
 
 
 @app.route('/change_password', methods=['GET', 'POST'])
@@ -636,10 +669,68 @@ def change_password():
         conn.close()
 
         log_action('CHANGE_PASSWORD', 'Contraseña cambiada por el usuario')
+
+        if force_change:
+            flash('Contraseña cambiada exitosamente. Configura tus preguntas de seguridad para recuperar tu cuenta.', 'success')
+            return redirect(url_for('security_questions'))
+
         flash('Contraseña cambiada exitosamente', 'success')
         return redirect(url_for('index'))
 
     return render_template('change_password.html', force_change=force_change)
+
+
+@app.route('/security_questions', methods=['GET', 'POST'])
+@login_required
+def security_questions():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        '''SELECT pregunta_seguridad_1, pregunta_seguridad_2
+           FROM usuarios
+           WHERE id = %s''',
+        (session['user_id'],),
+    )
+    questions = cursor.fetchone()
+
+    if request.method == 'POST':
+        question_1 = request.form.get('question_1', '').strip()
+        answer_1 = normalize_security_answer(request.form.get('answer_1', ''))
+        question_2 = request.form.get('question_2', '').strip()
+        answer_2 = normalize_security_answer(request.form.get('answer_2', ''))
+
+        if not question_1 or not answer_1 or not question_2 or not answer_2:
+            conn.close()
+            flash('Completa las dos preguntas y sus respuestas.', 'error')
+            return render_template('security_questions.html', questions=questions)
+
+        if question_1 == question_2:
+            conn.close()
+            flash('Selecciona o escribe dos preguntas diferentes.', 'error')
+            return render_template('security_questions.html', questions=questions)
+
+        cursor.execute(
+            '''UPDATE usuarios
+               SET pregunta_seguridad_1 = %s, respuesta_seguridad_hash_1 = %s,
+                   pregunta_seguridad_2 = %s, respuesta_seguridad_hash_2 = %s
+               WHERE id = %s''',
+            (
+                question_1,
+                generate_password_hash(answer_1),
+                question_2,
+                generate_password_hash(answer_2),
+                session['user_id'],
+            ),
+        )
+        conn.commit()
+        conn.close()
+
+        log_action('SET_SECURITY_QUESTIONS', 'Preguntas de seguridad configuradas')
+        flash('Preguntas de seguridad configuradas exitosamente.', 'success')
+        return redirect(url_for('index'))
+
+    conn.close()
+    return render_template('security_questions.html', questions=questions)
 
 
 @app.route('/delete_user/<int:user_id>', methods=['POST'])
