@@ -44,6 +44,7 @@
                             <th class="border-0 fw-semibold">Rol</th>
                             <th class="border-0 fw-semibold">Estado</th>
                             <th class="border-0 fw-semibold">Cambio Contraseña</th>
+                            <th class="border-0 fw-semibold">Preguntas</th>
                             <th class="border-0 fw-semibold">Fecha Creación</th>
                             <th class="border-0 fw-semibold text-center">Acciones</th>
                         </tr>
@@ -57,7 +58,8 @@
                             <td>{% if user[4] == 'admin' %}<span class="badge bg-danger">Admin</span>{% else %}<span class="badge bg-info">Visualizador</span>{% endif %}</td>
                             <td>{% if user[5] %}<span class="badge bg-success">Activo</span>{% else %}<span class="badge bg-secondary">Inactivo</span>{% endif %}</td>
                             <td>{% if user[6] %}<span class="badge bg-warning text-dark">Requerido</span>{% else %}<span class="badge bg-success">OK</span>{% endif %}</td>
-                            <td class="text-muted small">{{ user[7].strftime('%d/%m/%Y %H:%M') if user[7] else 'N/A' }}</td>
+                            <td>{% if user[7] %}<span class="badge bg-success">Configuradas</span>{% else %}<span class="badge bg-warning text-dark">Pendientes</span>{% endif %}</td>
+                            <td class="text-muted small">{{ user[8].strftime('%d/%m/%Y %H:%M') if user[8] else 'N/A' }}</td>
                             <td class="text-center">
                                 <a href="{{ url_for('edit_user', user_id=user[0]) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
                                 {% if user[0] != session.get('user_id') %}
@@ -78,7 +80,7 @@
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="8" class="text-center text-muted py-4">No hay usuarios</td>
+                            <td colspan="9" class="text-center text-muted py-4">No hay usuarios</td>
                         </tr>
                         {% endfor %}
                     </tbody>

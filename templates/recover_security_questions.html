@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Verificar Preguntas de Seguridad{% endblock %}
+
+{% block content %}
+<div class="container d-flex align-items-center justify-content-center" style="min-height: 90vh;">
+    <div class="col-md-7 col-lg-6">
+        <div class="card shadow-lg border-0 rounded-4">
+            <div class="card-body p-4">
+                <div class="text-center mb-4">
+                    <h3 class="fw-bold">Verificación de identidad</h3>
+                    <p class="text-muted mb-0">Responde las preguntas configuradas para <strong>{{ username }}</strong>.</p>
+                </div>
+
+                <form method="POST" novalidate>
+                    {% for question in questions %}
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">{{ question[1] }}</label>
+                        <input type="text" name="answer_{{ question[0] }}" class="form-control" autocomplete="off" required>
+                    </div>
+                    {% endfor %}
+
+                    <div class="alert alert-warning small rounded-3">
+                        Máximo 3 intentos fallidos. Después se bloqueará la recuperación durante 30 minutos.
+                    </div>
+
+                    <div class="d-grid mb-3">
+                        <button type="submit" class="btn btn-primary btn-lg rounded-3">
+                            Verificar respuestas
+                        </button>
+                    </div>
+
+                    <div class="text-center">
+                        <a href="{{ url_for('forgot_password') }}" class="text-decoration-none">Volver</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

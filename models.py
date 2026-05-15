@@ -125,6 +125,7 @@ def init_db():
         rol VARCHAR(30) NOT NULL DEFAULT 'operador' CHECK (rol IN ('admin', 'operador')),
         activo BOOLEAN NOT NULL DEFAULT TRUE,
         requiere_cambio_password BOOLEAN NOT NULL DEFAULT FALSE,
+        security_questions_configured BOOLEAN NOT NULL DEFAULT FALSE,
         fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     ''')
@@ -132,6 +133,7 @@ def init_db():
     cursor.execute("UPDATE usuarios SET email = username || '@unitec.edu.co' WHERE email IS NULL")
     cursor.execute("ALTER TABLE usuarios ALTER COLUMN email SET NOT NULL")
     cursor.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS requiere_cambio_password BOOLEAN NOT NULL DEFAULT FALSE")
+    cursor.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS security_questions_configured BOOLEAN NOT NULL DEFAULT FALSE")
 
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS password_recovery_codes (
@@ -146,6 +148,65 @@ def init_db():
     ''')
 
     cursor.execute('''
+    CREATE TABLE IF NOT EXISTS security_questions (
+        id SERIAL PRIMARY KEY,
+        pregunta TEXT UNIQUE NOT NULL,
+        activa BOOLEAN NOT NULL DEFAULT TRUE,
+        fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS user_security_answers (
+        id SERIAL PRIMARY KEY,
+        usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+        question_id INTEGER NOT NULL REFERENCES security_questions(id),
+        answer_hash TEXT NOT NULL,
+        fecha_configuracion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (usuario_id, question_id)
+    )
+    ''')
+
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS password_recovery_attempts (
+        id SERIAL PRIMARY KEY,
+        usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
+        username VARCHAR(60),
+        ip_origen VARCHAR(45),
+        exitoso BOOLEAN NOT NULL DEFAULT FALSE,
+        motivo TEXT,
+        user_agent TEXT,
+        fecha_intento TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS password_recovery_lockouts (
+        id SERIAL PRIMARY KEY,
+        usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+        bloqueado_hasta TIMESTAMP NOT NULL,
+        motivo TEXT,
+        fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        id SERIAL PRIMARY KEY,
+        usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+        token_hash TEXT NOT NULL,
+        fecha_expiracion TIMESTAMP NOT NULL,
+        utilizado BOOLEAN NOT NULL DEFAULT FALSE,
+        fecha_uso TIMESTAMP,
+        fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_recovery_attempts_user_date ON password_recovery_attempts (usuario_id, fecha_intento DESC)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_recovery_lockouts_user_until ON password_recovery_lockouts (usuario_id, bloqueado_hasta DESC)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_reset_tokens_user_expiration ON password_reset_tokens (usuario_id, fecha_expiracion DESC)')
+
+    cursor.execute('''
     CREATE TABLE IF NOT EXISTS auditoria (
         id SERIAL PRIMARY KEY,
         usuario_id INTEGER REFERENCES usuarios(id),
@@ -156,6 +217,22 @@ def init_db():
         fecha_evento TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     ''')
+
+    security_questions = [
+        '¿Cuál fue el nombre de tu primer proyecto personal importante?',
+        '¿Cuál era el apodo de una persona que te inspiró en tu infancia?',
+        '¿En qué ciudad viviste durante una etapa que recuerdas bien, pero que no publicas normalmente?',
+        '¿Cuál fue el nombre de tu primera mascota o animal cercano que recuerdas?',
+        '¿Cuál es una frase corta que usabas con tu mejor amigo de infancia?',
+        '¿Cuál fue el primer plato que aprendiste a preparar sin ayuda?',
+        '¿Cuál era el nombre del lugar donde tomaste una clase extracurricular memorable?',
+        '¿Cuál fue el primer usuario o alias que usaste en un sistema no público?',
+    ]
+    for pregunta in security_questions:
+        cursor.execute(
+            'INSERT INTO security_questions (pregunta) VALUES (%s) ON CONFLICT (pregunta) DO NOTHING',
+            (pregunta,),
+        )
 
     for categoria in ['NUEVO', 'ANTIGUO', 'REINTEGRO']:
         cursor.execute(
