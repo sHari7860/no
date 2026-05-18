@@ -1,8 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file, session
 from flask_mail import Mail, Message
 import os
-import string
-import random
 from functools import wraps
 from io import BytesIO
 from datetime import datetime, timedelta
@@ -13,6 +11,17 @@ from dotenv import load_dotenv
 
 from database import init_app, get_db_connection
 from import_data import import_excel_to_db
+from security_questions import (
+    RESET_TOKEN_MINUTES,
+    active_recovery_lock,
+    get_active_security_questions,
+    get_user_security_questions,
+    hash_security_answer,
+    record_failed_recovery_attempt,
+    record_successful_recovery_attempt,
+    user_has_security_questions,
+    verify_security_answer,
+)
 
 load_dotenv()
 
@@ -75,7 +84,7 @@ def role_required(*allowed_roles):
 @app.before_request
 def require_login():
     # Permitir acceso a rutas de login y recursos estáticos sin autenticación
-    exempt_endpoints = {'login', 'logout', 'forgot_password', 'verify_code', 'reset_password', 'static'}
+    exempt_endpoints = {'login', 'logout', 'forgot_password', 'answer_security_questions', 'reset_password', 'static'}
     endpoint = request.endpoint
     if endpoint in exempt_endpoints or endpoint is None:
         return
@@ -101,8 +110,33 @@ def require_login():
         flash('Tu sesión ha expirado. Por favor inicia sesión de nuevo.', 'warning')
         return redirect(url_for('login'))
 
-    # Si la sesion es valida y el usuario esta activo, renovar el tiempo de expiracion
+    # Si la sesion es valida, renovar el tiempo de expiracion
     session['auth_expires'] = (datetime.utcnow() + app.permanent_session_lifetime).timestamp()
+
+    # En el primer inicio de sesión se obliga a cambiar la contraseña temporal y
+    # después a configurar preguntas de seguridad una única vez.
+    if endpoint not in {'change_password', 'setup_security_questions', 'logout'}:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            'SELECT requiere_cambio_password, security_questions_configured FROM usuarios WHERE id = %s AND activo = TRUE',
+            (user_id,),
+        )
+        current_user = cur.fetchone()
+        conn.close()
+
+        if not current_user:
+            session.clear()
+            flash('Tu usuario no está activo. Contacta al administrador.', 'error')
+            return redirect(url_for('login'))
+
+        if current_user[0]:
+            flash('Debes cambiar tu contraseña temporal antes de continuar.', 'warning')
+            return redirect(url_for('change_password'))
+
+        if not current_user[1]:
+            flash('Configura tus preguntas de seguridad para proteger tu cuenta.', 'warning')
+            return redirect(url_for('setup_security_questions'))
 
 
 def log_action(action, detail=''):
@@ -125,7 +159,7 @@ def login():
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute(
-            'SELECT id, username, password_hash, nombre_completo, rol, activo, requiere_cambio_password FROM usuarios WHERE username = %s',
+            'SELECT id, username, password_hash, nombre_completo, rol, activo, requiere_cambio_password, security_questions_configured FROM usuarios WHERE username = %s',
             (username,),
         )
         user = cur.fetchone()
@@ -149,6 +183,10 @@ def login():
         if user[6]:
             flash('Debes cambiar tu contraseña antes de continuar', 'warning')
             return redirect(url_for('change_password'))
+
+        if not user[7]:
+            flash('Configura tus preguntas de seguridad antes de continuar', 'warning')
+            return redirect(url_for('setup_security_questions'))
         
         return redirect(url_for('index'))
 
@@ -165,172 +203,188 @@ def logout():
 
 @app.route('/forgot_password', methods=['GET', 'POST'])
 def forgot_password():
+    """Primer paso de recuperación: solicitar usuario sin revelar si existe."""
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
-        
+
         if not username:
             flash('Ingresa tu usuario', 'error')
             return render_template('forgot_password.html')
 
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute('SELECT id, username, email FROM usuarios WHERE username = %s AND activo = TRUE', (username,))
+        cursor.execute(
+            '''
+            SELECT id, username, nombre_completo
+            FROM usuarios
+            WHERE username = %s AND activo = TRUE
+            ''',
+            (username,),
+        )
         user = cursor.fetchone()
 
-        if not user or not user[2]:
-            flash('Si la cuenta existe, recibirás un código de verificación por correo', 'success')
+        generic_message = 'Si la cuenta existe y tiene preguntas configuradas, podrás continuar con la recuperación.'
+        if not user:
             conn.close()
+            flash(generic_message, 'success')
             return render_template('forgot_password.html')
 
-        email = user[2].strip().lower()
-
-        # Generar código de 6 dígitos
-        verification_code = ''.join(random.choices(string.digits, k=6))
         user_id = user[0]
-        expiration_time = datetime.utcnow() + timedelta(minutes=30)
-
-        # Guardar el código en la BD
-        cursor.execute(
-            'INSERT INTO password_recovery_codes (email, codigo, fecha_expiracion) VALUES (%s, %s, %s)',
-            (email, verification_code, expiration_time)
-        )
-        conn.commit()
-
-        if not app.config['MAIL_USERNAME'] or not app.config['MAIL_PASSWORD']:
+        if not user_has_security_questions(cursor, user_id):
             conn.close()
-            flash('La configuración del correo no está completa. Contacta al administrador.', 'error')
+            flash(generic_message, 'success')
             return render_template('forgot_password.html')
 
-        # Enviar el código por correo
-        try:
-            msg = Message(
-                subject='codigo dashboard',
-                recipients=[email],
-                body=verification_code
-            )
-            mail.send(msg)
-        except Exception as e:
-            print(f'Error enviando correo: {e}')
-            flash('Error al enviar el código. Por favor intenta de nuevo.', 'error')
-            conn.close()
-            return render_template('forgot_password.html')
-
+        lock = active_recovery_lock(cursor, user_id)
         conn.close()
-        flash('Un código de verificación ha sido enviado a tu correo', 'success')
-        return redirect(url_for('verify_code', email=email))
+        if lock:
+            flash('La recuperación está bloqueada temporalmente. Intenta nuevamente más tarde.', 'error')
+            return render_template('forgot_password.html')
+
+        session['recovery_user_id'] = user_id
+        session['recovery_username'] = user[1]
+        session['recovery_started_at'] = datetime.utcnow().timestamp()
+        return redirect(url_for('answer_security_questions'))
 
     return render_template('forgot_password.html')
 
 
-@app.route('/verify_code', methods=['GET', 'POST'])
-def verify_code():
-    email = request.args.get('email', '').lower() if request.method == 'GET' else request.form.get('email', '').lower()
-    
-    if not email:
-        flash('Email no proporcionado', 'error')
+@app.route('/answer_security_questions', methods=['GET', 'POST'])
+def answer_security_questions():
+    """Valida preguntas de seguridad antes de permitir restablecer contraseña."""
+    user_id = session.get('recovery_user_id')
+    if not user_id:
+        flash('Inicia nuevamente el proceso de recuperación.', 'warning')
         return redirect(url_for('forgot_password'))
 
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    lock = active_recovery_lock(cursor, user_id)
+    if lock:
+        conn.close()
+        flash('Has superado el máximo de intentos. La recuperación queda bloqueada durante 30 minutos.', 'error')
+        return redirect(url_for('forgot_password'))
+
+    questions = get_user_security_questions(cursor, user_id)
+    if len(questions) < 3:
+        conn.close()
+        session.pop('recovery_user_id', None)
+        session.pop('recovery_username', None)
+        flash('Tu cuenta no tiene preguntas de seguridad configuradas. Contacta al administrador.', 'error')
+        return redirect(url_for('login'))
+
     if request.method == 'POST':
-        codigo = request.form.get('codigo', '').strip()
+        all_correct = True
+        for answer_id, _question, answer_hash in questions:
+            answer = request.form.get(f'answer_{answer_id}', '')
+            if not verify_security_answer(answer, answer_hash):
+                all_correct = False
+                break
 
-        if not codigo:
-            flash('Ingresa el código de verificación', 'error')
-            return render_template('verify_code.html', email=email)
-
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Buscar código válido y no expirado
-        cursor.execute(
-            '''SELECT id FROM password_recovery_codes 
-               WHERE email = %s AND codigo = %s AND utilizado = FALSE 
-               AND fecha_expiracion > %s''',
-            (email, codigo, datetime.utcnow())
-        )
-        code_entry = cursor.fetchone()
-
-        if not code_entry:
-            flash('Código inválido o expirado', 'error')
+        if not all_correct:
+            locked_until, failed_count = record_failed_recovery_attempt(
+                cursor,
+                user_id,
+                request.remote_addr,
+                request.headers.get('User-Agent', ''),
+            )
+            conn.commit()
             conn.close()
-            return render_template('verify_code.html', email=email)
+            if locked_until:
+                flash('Has superado el máximo de intentos. Intenta nuevamente en 30 minutos.', 'error')
+                return redirect(url_for('forgot_password'))
 
-        # Marcar el código como utilizado
-        cursor.execute(
-            'UPDATE password_recovery_codes SET utilizado = TRUE, fecha_uso = %s WHERE id = %s',
-            (datetime.utcnow(), code_entry[0])
+            remaining = max(0, 3 - failed_count)
+            flash(f'Respuestas incorrectas. Intentos restantes: {remaining}.', 'error')
+            return render_template('security_recovery_questions.html', questions=questions)
+
+        record_successful_recovery_attempt(
+            cursor,
+            user_id,
+            request.remote_addr,
+            request.headers.get('User-Agent', ''),
         )
         conn.commit()
         conn.close()
 
-        flash('Código verificado correctamente', 'success')
-        return redirect(url_for('reset_password', email=email))
+        session['password_reset_user_id'] = user_id
+        session['password_reset_token'] = secrets.token_urlsafe(32)
+        session['password_reset_expires'] = (datetime.utcnow() + timedelta(minutes=RESET_TOKEN_MINUTES)).timestamp()
+        flash('Respuestas verificadas. Define tu nueva contraseña.', 'success')
+        return redirect(url_for('reset_password'))
 
-    return render_template('verify_code.html', email=email)
+    conn.close()
+    return render_template('security_recovery_questions.html', questions=questions)
 
 
 @app.route('/reset_password', methods=['GET', 'POST'])
 def reset_password():
-    email = request.args.get('email', '').lower() if request.method == 'GET' else request.form.get('email', '').lower()
-    
-    if not email:
-        flash('Email no proporcionado', 'error')
+    """Restablece contraseña usando un token temporal guardado en sesión."""
+    user_id = session.get('password_reset_user_id')
+    token = session.get('password_reset_token')
+    expires = session.get('password_reset_expires')
+
+    try:
+        expired = not expires or datetime.utcnow().timestamp() > float(expires)
+    except Exception:
+        expired = True
+
+    if not user_id or not token or expired:
+        session.pop('password_reset_user_id', None)
+        session.pop('password_reset_token', None)
+        session.pop('password_reset_expires', None)
+        flash('La autorización para restablecer contraseña expiró. Inicia nuevamente.', 'warning')
         return redirect(url_for('forgot_password'))
 
-    if request.method == 'GET':
-        # Verificar que existe el código verificado recientemente
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            '''SELECT id FROM password_recovery_codes 
-               WHERE email = %s AND utilizado = TRUE 
-               AND fecha_uso > %s''',
-            (email, datetime.utcnow() - timedelta(minutes=30))
-        )
-        if not cursor.fetchone():
-            flash('El código de verificación ha expirado', 'error')
-            conn.close()
-            return redirect(url_for('forgot_password'))
-        conn.close()
-        return render_template('reset_password.html', email=email)
-
-    elif request.method == 'POST':
+    if request.method == 'POST':
         password = request.form.get('password', '')
         password_confirm = request.form.get('password_confirm', '')
 
         if not password or not password_confirm:
             flash('Completa todos los campos', 'error')
-            return render_template('reset_password.html', email=email)
+            return render_template('reset_password.html')
 
         if password != password_confirm:
             flash('Las contraseñas no coinciden', 'error')
-            return render_template('reset_password.html', email=email)
+            return render_template('reset_password.html')
 
         if len(password) < 8:
             flash('La contraseña debe tener al menos 8 caracteres', 'error')
-            return render_template('reset_password.html', email=email)
+            return render_template('reset_password.html')
 
         conn = get_db_connection()
         cursor = conn.cursor()
-
-        # Buscar usuario por email
-        cursor.execute('SELECT id FROM usuarios WHERE email = %s', (email,))
+        cursor.execute(
+            '''
+            UPDATE usuarios
+            SET password_hash = %s, requiere_cambio_password = FALSE
+            WHERE id = %s AND activo = TRUE
+            RETURNING username, nombre_completo, rol
+            ''',
+            (generate_password_hash(password), user_id),
+        )
         user = cursor.fetchone()
-
         if not user:
-            flash('El usuario no existe', 'error')
             conn.close()
-            return render_template('reset_password.html', email=email)
+            flash('No fue posible restablecer la contraseña. Contacta al administrador.', 'error')
+            return redirect(url_for('login'))
 
-        user_id = user[0]
-        new_hash = generate_password_hash(password)
-        cursor.execute('UPDATE usuarios SET password_hash = %s WHERE id = %s', (new_hash, user_id))
         conn.commit()
         conn.close()
 
-        flash('Tu contraseña ha sido actualizada exitosamente. Ahora puedes iniciar sesión.', 'success')
-        return redirect(url_for('login'))
+        session.clear()
+        session.permanent = True
+        session['user_id'] = user_id
+        session['username'] = user[0]
+        session['nombre_completo'] = user[1]
+        session['rol'] = user[2].strip().lower() if user[2] else 'operador'
+        session['auth_token'] = secrets.token_urlsafe(32)
+        session['auth_expires'] = (datetime.utcnow() + app.permanent_session_lifetime).timestamp()
+        log_action('RESET_PASSWORD_SECURITY_QUESTIONS', 'Contraseña restablecida con preguntas de seguridad')
+        flash('Contraseña actualizada. Has ingresado automáticamente al sistema.', 'success')
+        return redirect(url_for('index'))
 
-    return render_template('reset_password.html', email=email)
+    return render_template('reset_password.html')
 
 
 @app.route('/users')
@@ -637,9 +691,114 @@ def change_password():
 
         log_action('CHANGE_PASSWORD', 'Contraseña cambiada por el usuario')
         flash('Contraseña cambiada exitosamente', 'success')
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        has_questions = user_has_security_questions(cursor, session['user_id'])
+        cursor.close()
+        conn.close()
+        if not has_questions:
+            flash('Ahora configura tus preguntas de seguridad.', 'warning')
+            return redirect(url_for('setup_security_questions'))
+
         return redirect(url_for('index'))
 
     return render_template('change_password.html', force_change=force_change)
+
+
+@app.route('/setup_security_questions', methods=['GET', 'POST'])
+@login_required
+def setup_security_questions():
+    """Permite configurar preguntas de seguridad una sola vez después del cambio de contraseña inicial."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        'SELECT requiere_cambio_password, security_questions_configured FROM usuarios WHERE id = %s',
+        (session['user_id'],),
+    )
+    user_state = cursor.fetchone()
+
+    if not user_state:
+        conn.close()
+        flash('Usuario no encontrado', 'error')
+        return redirect(url_for('logout'))
+
+    if user_state[0]:
+        conn.close()
+        flash('Primero debes cambiar tu contraseña temporal.', 'warning')
+        return redirect(url_for('change_password'))
+
+    if user_state[1] or user_has_security_questions(cursor, session['user_id']):
+        cursor.execute(
+            'UPDATE usuarios SET security_questions_configured = TRUE WHERE id = %s',
+            (session['user_id'],),
+        )
+        conn.commit()
+        conn.close()
+        flash('Tus preguntas de seguridad ya están configuradas.', 'info')
+        return redirect(url_for('index'))
+
+    questions = get_active_security_questions(cursor)
+
+    if request.method == 'POST':
+        selected_questions = request.form.getlist('question_id')
+        answers = request.form.getlist('answer')
+
+        if len(selected_questions) < 3 or len(answers) < 3:
+            conn.close()
+            flash('Debes responder mínimo 3 preguntas de seguridad.', 'error')
+            return render_template('setup_security_questions.html', questions=questions)
+
+        question_ids = selected_questions[:3]
+        answer_values = answers[:3]
+
+        if len(set(question_ids)) != 3:
+            conn.close()
+            flash('Selecciona 3 preguntas diferentes.', 'error')
+            return render_template('setup_security_questions.html', questions=questions)
+
+        if any(len(answer.strip()) < 2 for answer in answer_values):
+            conn.close()
+            flash('Cada respuesta debe tener al menos 2 caracteres.', 'error')
+            return render_template('setup_security_questions.html', questions=questions)
+
+        valid_question_ids = {str(row[0]) for row in questions}
+        if any(question_id not in valid_question_ids for question_id in question_ids):
+            conn.close()
+            flash('Una de las preguntas seleccionadas no es válida.', 'error')
+            return render_template('setup_security_questions.html', questions=questions)
+
+        try:
+            for question_id, answer in zip(question_ids, answer_values):
+                cursor.execute(
+                    """
+                    INSERT INTO user_security_answers (user_id, question_id, answer_hash)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (user_id, question_id)
+                    DO UPDATE SET answer_hash = EXCLUDED.answer_hash,
+                                  activo = TRUE,
+                                  fecha_creacion = CURRENT_TIMESTAMP
+                    """,
+                    (session['user_id'], int(question_id), hash_security_answer(answer)),
+                )
+
+            cursor.execute(
+                'UPDATE usuarios SET security_questions_configured = TRUE WHERE id = %s',
+                (session['user_id'],),
+            )
+            conn.commit()
+            conn.close()
+            log_action('SETUP_SECURITY_QUESTIONS', 'Preguntas de seguridad configuradas')
+            flash('Preguntas de seguridad configuradas correctamente.', 'success')
+            return redirect(url_for('index'))
+        except Exception as e:
+            conn.rollback()
+            conn.close()
+            flash(f'Error configurando preguntas de seguridad: {str(e)}', 'error')
+            return render_template('setup_security_questions.html', questions=questions)
+
+    conn.close()
+    return render_template('setup_security_questions.html', questions=questions)
 
 
 @app.route('/delete_user/<int:user_id>', methods=['POST'])

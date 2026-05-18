@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}Configurar preguntas de seguridad{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8 col-xl-7">
+            <div class="card shadow-sm border-0 rounded-4">
+                <div class="card-body p-4">
+                    <div class="text-center mb-4">
+                        <i class="bi bi-shield-lock display-5 text-primary"></i>
+                        <h2 class="fw-bold mt-2">Configura tus preguntas de seguridad</h2>
+                        <p class="text-muted mb-0">
+                            Responde 3 preguntas. Solo se configurarán una vez y se usarán si olvidas tu contraseña.
+                        </p>
+                    </div>
+
+                    <div class="alert alert-info rounded-3">
+                        Usa respuestas privadas, fáciles de recordar y evita datos públicos de redes sociales.
+                        Ignoraremos mayúsculas y espacios adicionales al validar.
+                    </div>
+
+                    <form method="POST" id="securityQuestionsForm" novalidate>
+                        {% for item in [1, 2, 3] %}
+                        <div class="border rounded-3 p-3 mb-3">
+                            <label class="form-label fw-semibold">Pregunta {{ item }}</label>
+                            <select name="question_id" class="form-select security-question" required>
+                                <option value="">Selecciona una pregunta</option>
+                                {% for question in questions %}
+                                <option value="{{ question[0] }}">{{ question[1] }}</option>
+                                {% endfor %}
+                            </select>
+
+                            <label class="form-label fw-semibold mt-3">Respuesta</label>
+                            <input type="text" name="answer" class="form-control" minlength="2" autocomplete="off" required>
+                            <div class="form-text">No uses respuestas que alguien pueda encontrar fácilmente en internet.</div>
+                        </div>
+                        {% endfor %}
+
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary btn-lg rounded-3">
+                                <i class="bi bi-check-circle"></i> Guardar y entrar al dashboard
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const selects = document.querySelectorAll('.security-question');
+function updateDisabledOptions() {
+    const selected = Array.from(selects).map(select => select.value).filter(Boolean);
+    selects.forEach(select => {
+        Array.from(select.options).forEach(option => {
+            option.disabled = option.value && option.value !== select.value && selected.includes(option.value);
+        });
+    });
+}
+selects.forEach(select => select.addEventListener('change', updateDisabledOptions));
+updateDisabledOptions();
+</script>
+{% endblock %}
