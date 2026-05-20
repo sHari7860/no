@@ -11,7 +11,7 @@ import psycopg2
 import os
 
 # Configuración de BD
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:123456@localhost:5432/UNITEC")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:123456@localhost:5432/UNITEC1")
 
 # Datos del nuevo usuario
 USERNAME = "visualizador"

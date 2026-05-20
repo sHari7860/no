@@ -1,4 +1,4 @@
-from models import init_db
+from backend.models import init_db
 
 if __name__ == '__main__':
     print('Creando base de datos y tablas en PostgreSQL...')

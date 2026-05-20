@@ -2,7 +2,7 @@
 Script de validación final de conteos
 Verifica que todas las queries sean consistentes
 """
-from database import get_db_connection
+from backend.database import get_db_connection
 
 def validar_conteos():
     conn = get_db_connection()

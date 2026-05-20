@@ -1,7 +1,7 @@
 """
 Reporte de cambios en conteos - Antes vs Después
 """
-from database import get_db_connection
+from backend.database import get_db_connection
 
 def generar_reporte():
     conn = get_db_connection()

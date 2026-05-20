@@ -1,7 +1,7 @@
 """
 Script de diagnóstico para verificar la exactitud de los conteos
 """
-from database import get_db_connection
+from backend.database import get_db_connection
 import pandas as pd
 
 def diagnostico():

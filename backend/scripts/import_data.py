@@ -1,4 +1,5 @@
 import re
+from pathlib import Path
 import glob
 import os
 from models import normalize_text, normalize_phone
@@ -150,7 +151,6 @@ def import_excel_to_db(filepath, filename, actor=None):
         programa_nombre = str(row.get('programa', '')).strip()
         programa_normalizado = normalize_text(programa_nombre)
 
-        # Detectar casos en que el mismo CC aparece en más de un programa dentro de un mismo archivo.
         if documento:
             programas_previos = documentos_programas.get(documento, set())
             if programa_normalizado and programa_normalizado not in programas_previos and programas_previos:
@@ -254,16 +254,15 @@ def import_excel_to_db(filepath, filename, actor=None):
     conn.commit()
     conn.close()
 
-    # Borrar archivos Excel previos (mantener solo el último importado)
     try:
+        base_dir = Path(filepath).parent
         for ext in ['*.xlsx', '*.xls']:
-            for archivo in glob.glob(os.path.join(os.path.dirname(filepath), ext)):
-                # No borrar el archivo actual
-                if archivo != filepath:
-                    try:
-                        os.remove(archivo)
-                    except Exception as e:
-                        print(f'Advertencia: No se pudo borrar {archivo}: {str(e)}')
+            for archivo in base_dir.glob(ext):
+                try:
+                    if archivo.resolve() != Path(filepath).resolve():
+                        archivo.unlink()
+                except Exception as e:
+                    print(f'Advertencia: No se pudo borrar {archivo}: {str(e)}')
     except Exception as e:
         print(f'Advertencia: Error al limpiar archivos previos: {str(e)}')
 

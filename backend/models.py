@@ -2,7 +2,6 @@ import os
 import unicodedata
 import re
 from werkzeug.security import generate_password_hash
-import psycopg2
 
 
 def normalize_text(text):
@@ -32,24 +31,47 @@ def normalize_phone(phone):
     return phone[:15]
 
 
-def init_db():
-    """Inicializa PostgreSQL creando tablas, constraints y datos base."""
-    database_url = os.getenv("DATABASE_URL", "postgresql://postgres:123456@localhost:5432/UNITEC")
-    conn = psycopg2.connect(database_url)
-    cursor = conn.cursor()
+def _translate_query(sql, is_sqlite):
+    return sql.replace('%s', '?') if is_sqlite and sql else sql
 
-    cursor.execute('''
+
+def _execute(cursor, sql, params=None, is_sqlite=False):
+    return cursor.execute(_translate_query(sql, is_sqlite), params or ())
+
+
+def _executemany(cursor, sql, seq_of_params, is_sqlite=False):
+    return cursor.executemany(_translate_query(sql, is_sqlite), seq_of_params)
+
+
+def init_db():
+    """Inicializa la base de datos creando tablas, constraints y datos base."""
+    database_url = os.getenv("DATABASE_URL", "postgresql://postgres:123456@localhost:5432/UNITEC1")
+    is_sqlite = database_url.startswith('sqlite:')
+
+    if is_sqlite:
+        import sqlite3
+        db_path = database_url.split(':///')[-1]
+        conn = sqlite3.connect(db_path, check_same_thread=False)
+        conn.execute('PRAGMA foreign_keys = ON')
+    else:
+        import psycopg2
+        conn = psycopg2.connect(database_url)
+
+    cursor = conn.cursor()
+    primary_key_type = 'INTEGER PRIMARY KEY AUTOINCREMENT' if is_sqlite else 'SERIAL PRIMARY KEY'
+
+    cursor.execute(f'''
     CREATE TABLE IF NOT EXISTS periodos (
-        id SERIAL PRIMARY KEY,
+        id {primary_key_type},
         codigo_periodo VARCHAR(20) UNIQUE NOT NULL,
         nombre VARCHAR(120),
         fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     ''')
 
-    cursor.execute('''
+    cursor.execute(f'''
     CREATE TABLE IF NOT EXISTS programas (
-        id SERIAL PRIMARY KEY,
+        id {primary_key_type},
         nombre_normalizado TEXT UNIQUE NOT NULL,
         nombre_original TEXT,
         tipo_programa VARCHAR(40),
@@ -57,9 +79,9 @@ def init_db():
     )
     ''')
 
-    cursor.execute('''
+    cursor.execute(f'''
     CREATE TABLE IF NOT EXISTS estudiantes (
-        id SERIAL PRIMARY KEY,
+        id {primary_key_type},
         documento VARCHAR(50) NOT NULL,
         nombre_completo TEXT NOT NULL,
         nombre_normalizado TEXT NOT NULL,
@@ -72,23 +94,23 @@ def init_db():
     )
     ''')
 
-    cursor.execute('''
+    cursor.execute(f'''
     CREATE TABLE IF NOT EXISTS categorias (
-        id SERIAL PRIMARY KEY,
+        id {primary_key_type},
         nombre VARCHAR(50) UNIQUE NOT NULL
     )
     ''')
 
-    cursor.execute('''
+    cursor.execute(f'''
     CREATE TABLE IF NOT EXISTS estados_matricula (
-        id SERIAL PRIMARY KEY,
+        id {primary_key_type},
         nombre VARCHAR(50) UNIQUE NOT NULL
     )
     ''')
 
-    cursor.execute('''
+    cursor.execute(f'''
     CREATE TABLE IF NOT EXISTS matriculas (
-        id SERIAL PRIMARY KEY,
+        id {primary_key_type},
         periodo_id INTEGER NOT NULL REFERENCES periodos(id),
         estudiante_id INTEGER NOT NULL REFERENCES estudiantes(id),
         programa_id INTEGER NOT NULL REFERENCES programas(id),
@@ -103,9 +125,9 @@ def init_db():
     )
     ''')
 
-    cursor.execute('''
+    cursor.execute(f'''
     CREATE TABLE IF NOT EXISTS archivos_importados (
-        id SERIAL PRIMARY KEY,
+        id {primary_key_type},
         nombre_archivo TEXT UNIQUE NOT NULL,
         periodo_id INTEGER REFERENCES periodos(id),
         fecha_importacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -115,9 +137,9 @@ def init_db():
     )
     ''')
 
-    cursor.execute('''
+    cursor.execute(f'''
     CREATE TABLE IF NOT EXISTS usuarios (
-        id SERIAL PRIMARY KEY,
+        id {primary_key_type},
         username VARCHAR(60) UNIQUE NOT NULL,
         email VARCHAR(120) UNIQUE NOT NULL,
         password_hash TEXT NOT NULL,
@@ -130,13 +152,20 @@ def init_db():
     ''')
     cursor.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS email VARCHAR(120) UNIQUE")
     cursor.execute("UPDATE usuarios SET email = username || '@unitec.edu.co' WHERE email IS NULL")
-    cursor.execute("ALTER TABLE usuarios ALTER COLUMN email SET NOT NULL")
-    cursor.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS requiere_cambio_password BOOLEAN NOT NULL DEFAULT FALSE")
-    cursor.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS security_questions_configured BOOLEAN NOT NULL DEFAULT FALSE")
+    if not is_sqlite:
+        cursor.execute("ALTER TABLE usuarios ALTER COLUMN email SET NOT NULL")
+    try:
+        cursor.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS requiere_cambio_password BOOLEAN NOT NULL DEFAULT FALSE")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS security_questions_configured BOOLEAN NOT NULL DEFAULT FALSE")
+    except Exception:
+        pass
 
-    cursor.execute('''
+    cursor.execute(f'''
     CREATE TABLE IF NOT EXISTS security_questions (
-        id SERIAL PRIMARY KEY,
+        id {primary_key_type},
         pregunta TEXT UNIQUE NOT NULL,
         activo BOOLEAN NOT NULL DEFAULT TRUE,
         orden INTEGER NOT NULL DEFAULT 0,
@@ -144,9 +173,9 @@ def init_db():
     )
     ''')
 
-    cursor.execute('''
+    cursor.execute(f'''
     CREATE TABLE IF NOT EXISTS user_security_answers (
-        id SERIAL PRIMARY KEY,
+        id {primary_key_type},
         user_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
         question_id INTEGER NOT NULL REFERENCES security_questions(id) ON DELETE RESTRICT,
         answer_hash TEXT NOT NULL,
@@ -156,9 +185,9 @@ def init_db():
     )
     ''')
 
-    cursor.execute('''
+    cursor.execute(f'''
     CREATE TABLE IF NOT EXISTS password_recovery_attempts (
-        id SERIAL PRIMARY KEY,
+        id {primary_key_type},
         user_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
         ip_origen VARCHAR(45),
         user_agent TEXT,
@@ -167,9 +196,9 @@ def init_db():
     )
     ''')
 
-    cursor.execute('''
+    cursor.execute(f'''
     CREATE TABLE IF NOT EXISTS password_recovery_locks (
-        id SERIAL PRIMARY KEY,
+        id {primary_key_type},
         user_id INTEGER UNIQUE NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
         locked_until TIMESTAMP NOT NULL,
         motivo TEXT,
@@ -194,13 +223,15 @@ def init_db():
         ('¿Cuál era el nombre de tu primer jefe, mentor o entrenador?', 80),
     ]
     for pregunta, orden in security_questions:
-        cursor.execute(
+        _execute(
+            cursor,
             '''
             INSERT INTO security_questions (pregunta, orden)
             VALUES (%s, %s)
             ON CONFLICT (pregunta) DO UPDATE SET activo = TRUE, orden = EXCLUDED.orden
             ''',
             (pregunta, orden),
+            is_sqlite=is_sqlite,
         )
 
     cursor.execute('''
@@ -212,9 +243,9 @@ def init_db():
     )
     ''')
 
-    cursor.execute('''
+    cursor.execute(f'''
     CREATE TABLE IF NOT EXISTS password_recovery_codes (
-        id SERIAL PRIMARY KEY,
+        id {primary_key_type},
         email VARCHAR(120) NOT NULL,
         codigo VARCHAR(6) NOT NULL,
         fecha_expiracion TIMESTAMP NOT NULL,
@@ -224,9 +255,9 @@ def init_db():
     )
     ''')
 
-    cursor.execute('''
+    cursor.execute(f'''
     CREATE TABLE IF NOT EXISTS auditoria (
-        id SERIAL PRIMARY KEY,
+        id {primary_key_type},
         usuario_id INTEGER REFERENCES usuarios(id),
         username VARCHAR(60),
         accion VARCHAR(100) NOT NULL,
@@ -237,15 +268,19 @@ def init_db():
     ''')
 
     for categoria in ['NUEVO', 'ANTIGUO', 'REINTEGRO']:
-        cursor.execute(
+        _execute(
+            cursor,
             'INSERT INTO categorias (nombre) VALUES (%s) ON CONFLICT (nombre) DO NOTHING',
             (categoria,),
+            is_sqlite=is_sqlite,
         )
 
     for estado in ['Confirmado', 'Por confirmar', 'Cancelado']:
-        cursor.execute(
+        _execute(
+            cursor,
             'INSERT INTO estados_matricula (nombre) VALUES (%s) ON CONFLICT (nombre) DO NOTHING',
             (estado,),
+            is_sqlite=is_sqlite,
         )
 
     default_user = os.getenv('APP_ADMIN_USER', 'admin')
@@ -253,13 +288,15 @@ def init_db():
     default_name = os.getenv('APP_ADMIN_NAME', 'Administrador')
     default_email = os.getenv('APP_ADMIN_EMAIL', 'admin@unitec.edu.co')
 
-    cursor.execute(
+    _execute(
+        cursor,
         '''
         INSERT INTO usuarios (username, email, password_hash, nombre_completo, rol)
         VALUES (%s, %s, %s, %s, 'admin')
         ON CONFLICT (username) DO NOTHING
         ''',
         (default_user, default_email, generate_password_hash(default_password), default_name),
+        is_sqlite=is_sqlite,
     )
 
     conn.commit()

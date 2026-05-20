@@ -5,7 +5,15 @@ echo    EJECUTANDO APLICACIÓN
 echo ================================
 echo.
 
-cd /d "C:\Users\Sharyk Forero\Downloads\web"
+REM Cambiar al directorio del script (carpeta raíz del proyecto)
+pushd "%~dp0"
+
+if not exist backend (
+    echo ERROR: No se encontró la carpeta backend en el proyecto.
+    pause >nul
+    popd
+    exit /b 1
+)
 
 echo 1. Limpiando entorno anterior...
 rmdir /s /q venv 2>nul
@@ -23,13 +31,14 @@ echo 3. Verificando Python...
 venv\Scripts\python.exe --version
 
 echo 4. Instalando dependencias...
-venv\Scripts\pip.exe install sqlalchemy==2.0.30 flask pandas
+venv\Scripts\python.exe -m pip install -r requirements.txt
 
 echo 5. Ejecutando aplicación...
 echo ================================
-venv\Scripts\python.exe app.py
+venv\Scripts\python.exe -m backend.app
 
 echo.
 echo ================================
 echo Presiona cualquier tecla para salir...
 pause >nul
+popd

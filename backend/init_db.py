@@ -1,4 +1,4 @@
-from models import init_db
+from backend.models import init_db
 
 
 def init_database():

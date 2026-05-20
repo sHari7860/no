@@ -1,7 +1,7 @@
 import pandas as pd
 import re
 from datetime import datetime
-from connection import engine
+from backend.connection import engine
 from sqlalchemy import text
 
 def normalizar_nombre(nombre):
