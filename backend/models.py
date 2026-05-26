@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import os
 import unicodedata
 import re
@@ -5,10 +6,9 @@ from werkzeug.security import generate_password_hash
 
 
 def normalize_text(text):
-    """Normaliza texto: elimina tildes, convierte a minúsculas y limpia espacios."""
+    """Normaliza texto: elimina tildes, convierte a minusculas y limpia espacios."""
     if text is None:
         return ""
-
     text = str(text)
     text = unicodedata.normalize('NFKD', text)
     text = ''.join([c for c in text if not unicodedata.combining(c)])
@@ -18,16 +18,13 @@ def normalize_text(text):
 
 
 def normalize_phone(phone):
-    """Normaliza números de teléfono."""
+    """Normaliza numeros de telefono."""
     if phone is None:
         return ""
-
     phone = str(phone)
     phone = ''.join(filter(str.isdigit, phone))
-
     if phone.startswith('57') and len(phone) > 10:
         phone = phone[2:]
-
     return phone[:15]
 
 
@@ -213,14 +210,14 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_recovery_locks_user_until ON password_recovery_locks(user_id, locked_until)")
 
     security_questions = [
-        ('¿Cuál fue el nombre de un profesor que recuerdas especialmente?', 10),
-        ('¿Cuál era el apodo de tu mejor amigo o amiga de la infancia?', 20),
-        ('¿Cuál fue el nombre de tu primera mascota o de una mascota que recuerdas?', 30),
-        ('¿En qué ciudad o barrio viviste cuando tenías 10 años?', 40),
-        ('¿Cuál fue el primer concierto, evento o partido al que asististe?', 50),
-        ('¿Cuál era el nombre de un libro, película o serie favorita de tu adolescencia?', 60),
-        ('¿Cuál fue el primer lugar al que viajaste fuera de tu ciudad?', 70),
-        ('¿Cuál era el nombre de tu primer jefe, mentor o entrenador?', 80),
+        ('Cual fue el nombre de un profesor que recuerdas especialmente?', 10),
+        ('Cual era el apodo de tu mejor amigo o amiga de la infancia?', 20),
+        ('Cual fue el nombre de tu primera mascota o de una mascota que recuerdas?', 30),
+        ('En que ciudad o barrio viviste cuando tenias 10 anos?', 40),
+        ('Cual fue el primer concierto, evento o partido al que asististe?', 50),
+        ('Cual era el nombre de un libro, pelicula o serie favorita de tu adolescencia?', 60),
+        ('Cual fue el primer lugar al que viajaste fuera de tu ciudad?', 70),
+        ('Cual era el nombre de tu primer jefe, mentor o entrenador?', 80),
     ]
     for pregunta, orden in security_questions:
         _execute(

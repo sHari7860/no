@@ -9,4 +9,7 @@ COPY . .
 
 EXPOSE 5000
 
-CMD ["python", "-m", "flask", "run", "--host=0.0.0.0", "--port=5000"]
+ENV FLASK_ENV=development
+ENV FLASK_DEBUG=1
+
+CMD ["python", "-m", "flask", "run", "--host=0.0.0.0", "--port=5000", "--reload"]

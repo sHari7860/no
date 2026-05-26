@@ -1,4 +1,7 @@
+# -*- coding: utf-8 -*-
 import os
+import sys
+import io
 from urllib.parse import urlparse, unquote
 from pathlib import Path
 
@@ -17,17 +20,12 @@ from config import SQLITE_DB
 
 
 def get_database_url():
-    """Retorna DATABASE_URL si está en entorno. Si no, detecta sqlite en data/ si existe."""
     env = os.getenv('DATABASE_URL')
     if env:
         return env
-
-    # Si existe archivo sqlite local, usarlo por conveniencia
     if Path(SQLITE_DB).exists():
         return f'sqlite:///{Path(SQLITE_DB).as_posix()}'
-
-    # Por defecto asumir PostgreSQL en desarrollo (no forzar cambios en SQL usado)
-    return os.getenv("DATABASE_URL", "postgresql://postgres:123456@localhost:5432/UNITEC1")
+    return "postgresql://postgres:123456@localhost:5432/UNITEC1"
 
 
 def is_sqlite_database():
@@ -113,10 +111,10 @@ def get_db_connection(dict_cursor: bool = False):
             database=db_params['database'],
         )
 
-    raise RuntimeError('No se encontró un driver de base de datos disponible (psycopg2/pg8000).')
+    raise RuntimeError('No se encontro un driver de base de datos disponible.')
 
 
 def init_app():
-    """Inicializa la aplicación creando las tablas si no existen."""
+    """Inicializa la aplicacion creando las tablas si no existen."""
     from models import init_db
     init_db()
