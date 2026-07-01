@@ -30,7 +30,7 @@ app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'True').lower() == 'true'
 app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME', '')
 app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD', '')
 app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER') or app.config['MAIL_USERNAME'] or 'noreply@unitec.edu.co'
-app.config['MAIL_SUPPRESS_SEND'] = not (app.config['MAIL_USERNAME'] and app.config['MAIL_PASSWORD'])
+app.config['MAIL_SUPPRESS_SEND'] = os.getenv('MAIL_SUPPRESS_SEND', 'False').lower() == 'true'
 
 mail = Mail(app)
 
@@ -182,38 +182,39 @@ def forgot_password():
             conn.close()
             return render_template('forgot_password.html')
 
-        # Generar código de 6 dígitos
-        verification_code = ''.join(random.choices(string.digits, k=6))
-        user_id = user[0]
-        expiration_time = datetime.utcnow() + timedelta(minutes=30)
+        try:
+            # Generar código de 6 dígitos
+            verification_code = ''.join(random.choices(string.digits, k=6))
+            expiration_time = datetime.utcnow() + timedelta(minutes=30)
 
-        # Guardar el código en la BD
-        cursor.execute(
-            'INSERT INTO password_recovery_codes (email, codigo, fecha_expiracion) VALUES (%s, %s, %s)',
-            (email, verification_code, expiration_time)
-        )
-        conn.commit()
+            # Guardar el código en la BD solo si el correo se puede enviar correctamente
+            cursor.execute(
+                'INSERT INTO password_recovery_codes (email, codigo, fecha_expiracion) VALUES (%s, %s, %s)',
+                (email, verification_code, expiration_time)
+            )
 
-        if not app.config['MAIL_USERNAME'] or not app.config['MAIL_PASSWORD']:
+            sent, error = send_verification_email(
+                email,
+                user[1],
+                verification_code,
+                'Código de verificación de recuperación'
+            )
+
+            if not sent:
+                conn.rollback()
+                flash(error, 'error')
+                conn.close()
+                return render_template('forgot_password.html')
+
+            conn.commit()
             conn.close()
-            flash('La configuración del correo no está completa. Contacta al administrador.', 'error')
-            return render_template('forgot_password.html')
-
-        sent, error = send_verification_email(
-            email,
-            user[1],
-            verification_code,
-            'Código de verificación dashboard'
-        )
-
-        if not sent:
-            flash(error, 'error')
+            flash('Un código de verificación ha sido enviado a tu correo', 'success')
+            return redirect(url_for('verify_code', email=email))
+        except Exception as e:
+            conn.rollback()
             conn.close()
+            flash(f'No fue posible enviar el código de verificación: {str(e)}', 'error')
             return render_template('forgot_password.html')
-
-        conn.close()
-        flash('Un código de verificación ha sido enviado a tu correo', 'success')
-        return redirect(url_for('verify_code', email=email))
 
     return render_template('forgot_password.html')
 
@@ -549,13 +550,19 @@ def edit_user(user_id):
 
 def send_verification_email(email, username, verification_code, subject):
     """Envía un correo de verificación con código al usuario."""
-    if not app.config['MAIL_USERNAME'] or not app.config['MAIL_PASSWORD']:
-        return False, 'La configuración del correo no está completa. Contacta al administrador.'
-
     try:
+        plain_text = (
+            f'Hola {username},\n\n'
+            f'Tu código de verificación es: {verification_code}\n\n'
+            'Este código es válido por 30 minutos.\n'
+            'Si no solicitaste este proceso, ignora este mensaje.\n'
+        )
+
         msg = Message(
             subject=subject,
             recipients=[email],
+            sender=app.config['MAIL_DEFAULT_SENDER'],
+            body=plain_text,
             html=f'''
             <html>
                 <body style="font-family: Arial, sans-serif;">
@@ -605,33 +612,47 @@ def change_password():
                 flash('No hay correo asociado a esta cuenta', 'error')
                 return render_template('change_password.html', force_change=force_change, user_email=user_email, code_sent=False)
 
-            verification_code = ''.join(random.choices(string.digits, k=6))
-            expiration_time = datetime.utcnow() + timedelta(minutes=30)
+            try:
+                verification_code = ''.join(random.choices(string.digits, k=6))
+                expiration_time = datetime.utcnow() + timedelta(minutes=30)
 
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute(
-                'INSERT INTO password_recovery_codes (email, codigo, fecha_expiracion) VALUES (%s, %s, %s)',
-                (user_email, verification_code, expiration_time)
-            )
-            conn.commit()
-            cursor.close()
-            conn.close()
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute(
+                    'INSERT INTO password_recovery_codes (email, codigo, fecha_expiracion) VALUES (%s, %s, %s)',
+                    (user_email, verification_code, expiration_time)
+                )
 
-            sent, error = send_verification_email(
-                user_email,
-                username,
-                verification_code,
-                'Código de verificación para cambio de contraseña'
-            )
+                sent, error = send_verification_email(
+                    user_email,
+                    username,
+                    verification_code,
+                    'Código de verificación para cambio de contraseña'
+                )
 
-            if not sent:
-                flash(error, 'error')
+                if not sent:
+                    conn.rollback()
+                    cursor.close()
+                    conn.close()
+                    flash(error, 'error')
+                    return render_template('change_password.html', force_change=force_change, user_email=user_email, code_sent=False)
+
+                conn.commit()
+                cursor.close()
+                conn.close()
+
+                flash('Código de verificación enviado a tu correo.', 'success')
+                code_sent = True
+                return render_template('change_password.html', force_change=force_change, user_email=user_email, code_sent=code_sent)
+            except Exception as e:
+                try:
+                    conn.rollback()
+                    cursor.close()
+                    conn.close()
+                except Exception:
+                    pass
+                flash(f'No fue posible enviar el código de verificación: {str(e)}', 'error')
                 return render_template('change_password.html', force_change=force_change, user_email=user_email, code_sent=False)
-
-            flash('Código de verificación enviado a tu correo.', 'success')
-            code_sent = True
-            return render_template('change_password.html', force_change=force_change, user_email=user_email, code_sent=code_sent)
 
         # Cambio de contraseña habitual
         current_password = request.form.get('current_password', '')
@@ -750,7 +771,6 @@ def index():
         FROM periodos p
         LEFT JOIN matriculas m ON m.periodo_id = p.id
         LEFT JOIN estados_matricula e ON m.estado_matricula_id = e.id
-        WHERE p.codigo_periodo NOT IN ('20260', '20259', '20268', '20263', '20258')
         GROUP BY p.codigo_periodo
         ORDER BY p.codigo_periodo DESC
     ''')
@@ -1118,10 +1138,9 @@ def view_data():
     datos = cursor.fetchall()
 
     cursor.execute('''
-        SELECT DISTINCT per.codigo_periodo
-        FROM periodos per
-        INNER JOIN matriculas m ON m.periodo_id = per.id
-        ORDER BY per.codigo_periodo DESC
+        SELECT DISTINCT codigo_periodo
+        FROM periodos
+        ORDER BY codigo_periodo DESC
     ''')
     periodos = cursor.fetchall()
     cursor.execute('SELECT DISTINCT nombre FROM categorias ORDER BY nombre')
