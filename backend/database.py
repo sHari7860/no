@@ -25,7 +25,7 @@ def get_database_url():
         return env
     if Path(SQLITE_DB).exists():
         return f'sqlite:///{Path(SQLITE_DB).as_posix()}'
-    return "postgresql://postgres:123456@localhost:5432/UNITEC1"
+    return "postgresql://postgres:123456@localhost:5432/UNITEC"
 
 
 def is_sqlite_database():

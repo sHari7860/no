@@ -42,7 +42,7 @@ def _executemany(cursor, sql, seq_of_params, is_sqlite=False):
 
 def init_db():
     """Inicializa la base de datos creando tablas, constraints y datos base."""
-    database_url = os.getenv("DATABASE_URL", "postgresql://postgres:123456@localhost:5432/UNITEC1")
+    database_url = os.getenv("DATABASE_URL", "postgresql://postgres:123456@localhost:5432/UNITEC")
     is_sqlite = database_url.startswith('sqlite:')
 
     if is_sqlite:
