@@ -1,5 +1,6 @@
 @echo off
 chcp 65001 >nul
+setlocal
 echo ================================
 echo    EJECUTANDO APLICACIÓN
 echo ================================
@@ -15,27 +16,28 @@ if not exist backend (
     exit /b 1
 )
 
-echo 1. Limpiando entorno anterior...
-rmdir /s /q venv 2>nul
+if not exist venv\Scripts\python.exe (
+    echo 1. Creando entorno virtual...
+    py -3 -m venv venv
+)
 
-echo 2. Creando entorno virtual...
-"C:\Users\Sharyk Forero\AppData\Local\Programs\Python\Python312\python.exe" -m venv venv
-
-if not exist venv (
-    echo ERROR: No se pudo crear el entorno
+if not exist venv\Scripts\python.exe (
+    echo ERROR: No se pudo crear el entorno virtual.
     pause
+    popd
     exit /b 1
 )
 
-echo 3. Verificando Python...
+echo 2. Verificando Python...
 venv\Scripts\python.exe --version
 
-echo 4. Instalando dependencias...
-venv\Scripts\python.exe -m pip install -r requirements.txt
+echo 3. Instalando dependencias...
+venv\Scripts\python.exe -m pip install --upgrade pip
+venv\Scripts\python.exe -m pip install -r backend\requirements.txt
 
-echo 5. Ejecutando aplicación...
+echo 4. Ejecutando aplicación...
 echo ================================
-venv\Scripts\python.exe -m backend.app
+venv\Scripts\python.exe app.py
 
 echo.
 echo ================================
